@@ -42,8 +42,10 @@ public sealed class AnthropicCompletion : IClaudeCompletion
                 // Uyarlanabilir düşünme de bu sınıra dahildir; çeviri kısa olsa da kesilmesin.
                 MaxTokens = 2048,
                 System = system,
-                // Altyazı çevirisi basit ve gecikmeye duyarlı: düşük efor.
+                // Altyazı çevirisi basit ve gecikmeye duyarlı: düşük efor. Haiku'da düşünme kapatılır (daha hızlı ve
+                // ucuz; Haiku 5.5 buna düşük eforda izin verir). Opus 5.5'te düşünme kapatılamaz, düşük eforla sınırlanır.
                 OutputConfig = new OutputConfig { Effort = Effort.Low },
+                Thinking = _model == FastModel ? new ThinkingConfigDisabled() : null,
                 Messages = [new UserMessageParam { Content = user }],
             }, cancellationToken).ConfigureAwait(false);
         }

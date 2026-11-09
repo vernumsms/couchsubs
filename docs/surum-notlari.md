@@ -4,7 +4,7 @@ CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Ori
 
 **Bu sürümde yeni**
 
-- **Yapay zekâ çevirisi (Claude).** Bilgisayardaki çeviri modeli her satırı hemen gösterir; bir an sonra Claude onu deyimleri, argoyu ve bağlamı anlayan doğal Türkçeyle değiştirir ("We're gonna call his bluff" → "Blöfünü göreceğiz"). Önceki satırları ve konuşmacı adlarını bağlam olarak kullanır; seçenek listelerini satır satır çevirir; yazı tanıma hatalarını ("cali" → "call") düzeltir. Ayarlar › Yapay zekâ çevirisi'nden kendi Anthropic anahtarınızla açılır; Claude Opus 5.5 (kalite) ya da Claude Haiku 5.5 (hız, düşük maliyet) seçilebilir. Claude'a ulaşılamazsa bilgisayardaki çeviri kalır.
+- **Yapay zekâ çevirisi (Claude).** Bilgisayardaki çeviri modeli her satırı hemen gösterir; bir an sonra Claude onu deyimleri, argoyu ve bağlamı anlayan doğal Türkçeyle değiştirir ("We're gonna call his bluff" → "Blöfünü göreceğiz"). Önceki satırları ve konuşmacı adlarını bağlam olarak kullanır; seçenek listelerini satır satır çevirir; yazı tanıma hatalarını ("cali" → "call") düzeltir. Ayarlar › Yapay zekâ çevirisi'nden kendi Anthropic anahtarınızla açılır; varsayılan model Claude Haiku 5.5 (hızlı, düşük maliyet); en iyi kalite için Claude Opus 5.5 seçilebilir. Claude'a ulaşılamazsa bilgisayardaki çeviri kalır.
 - **Anlık altyazı.** Yalnız oyunda o an duran satırın çevirisi gösterilir: yeni satır gelince eskisi hemen kalkar, geç gelen eski çeviriler gösterilmez. Hızlı sahnelerde altyazılar birbirine karışmaz. Varsayılan olarak açık; Ayarlar › Anlık altyazı'dan kapatılabilir.
 - Uygulama içi güncelleme bu fork'un sürümlerini izler.
 

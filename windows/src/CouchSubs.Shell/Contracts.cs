@@ -47,8 +47,8 @@ public sealed record UserSettings
     public bool OnlineTranslation { get; init; }
     /// <summary>Anahtar girildiyse çeviri iki aşamalı olur: cihaz üstü model hemen, Claude'un Türkçesi ardından.</summary>
     public bool AiTranslation { get; init; }
-    /// <summary>Claude modeli: kalite için Opus, hız ve düşük maliyet için Haiku.</summary>
-    public string AiModel { get; init; } = "claude-opus-5-5";
+    /// <summary>Claude modeli: varsayılan Haiku (hızlı, düşük maliyet); en iyi kalite için Opus.</summary>
+    public string AiModel { get; init; } = "claude-haiku-5-5";
     /// <summary>Anlık altyazı: yeni satır gelince eskisi hemen kalkar; geç gelen eski çeviriler gösterilmez.</summary>
     public bool InstantSubtitles { get; init; } = true;
 

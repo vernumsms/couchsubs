@@ -93,8 +93,8 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                             <TextBlock Text="{t:T 'Model'}" VerticalAlignment="Center" Margin="0,0,16,0" />
                             <ComboBox x:Name="AiModel" SelectionChanged="OnAiModel">
-                                <ComboBoxItem Tag="claude-opus-5-5" Content="{t:T 'Claude Opus 5.5 (best quality)'}" />
                                 <ComboBoxItem Tag="claude-haiku-5-5" Content="{t:T 'Claude Haiku 5.5 (faster, much lower cost)'}" />
+                                <ComboBoxItem Tag="claude-opus-5-5" Content="{t:T 'Claude Opus 5.5 (best quality)'}" />
                             </ComboBox>
                         </StackPanel>
                         <StackPanel x:Name="AiNewKey">
