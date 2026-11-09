@@ -86,6 +86,32 @@ public class ProgressivePipelineTests
         Assert.Equal(["hızlı: Hold the gate.", "hızlı: Run!", "Koş!"], sender.Sent);
     }
 
+    /// Altyazı titreyip yeniden okununca aynı replik yeniden çevrilmez ve seslendirilmez.
+    [Fact]
+    public async Task FlickeringLineIsNotTranslatedOrSpokenAgain()
+    {
+        var sender = new FakeSender();
+        var translator = new GatedTranslator();
+        translator.Open();
+        var spoken = 0;
+        var pipeline = new SubtitlePipeline(new FakeReader("Yes, sir.", "", "", "", "", "", "", "Yes, sir."), translator, sender, instant: true);
+        pipeline.SpeechReady += _ => spoken++;
+        for (var i = 0; i < 8; i++) { await pipeline.ProcessAsync(Image, new CropRegion()); await pipeline.WaitForTranslationsAsync(); }
+        Assert.Equal(["Yes, sir."], translator.Requested);
+        Assert.Equal(["TR: Yes, sir.", "TR: Yes, sir."], sender.Sent);
+        Assert.Equal(1, spoken);
+    }
+
+    /// Konuşmacı adı yazıdan sonra belirince ("Moon Here... take my radio.") aynı replik yeniden seslendirilmez.
+    [Fact]
+    public async Task SpeakerNameAppearingLaterIsSameLine()
+    {
+        Assert.True(SubtitlePipeline.SameLine(TextMatch.Normalize("Here... take my radio."), TextMatch.Normalize("Moon Here... take my radio.")));
+        Assert.True(SubtitlePipeline.SameLine(TextMatch.Normalize("Cho [Shit...]"), TextMatch.Normalize("Cho [Shit...J")));
+        Assert.False(SubtitlePipeline.SameLine(TextMatch.Normalize("Get ready to shoot."), TextMatch.Normalize("Soldiers are down there.")));
+        await Task.CompletedTask;
+    }
+
     /// Anlık mod: yeni satır gelir gelmez eski çeviri kalkar.
     [Fact]
     public async Task InstantModeClearsPreviousLineAsSoonAsNewOneAppears()

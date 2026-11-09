@@ -52,8 +52,11 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
           equivalents (for example "We're gonna call his bluff" -> "Blöfünü göreceğiz").
         - Characters talk to each other with the informal "sen", unless the context clearly calls for formality.
         - Keep it concise and easy to read quickly.
-        - If the line starts with a speaker label such as "MOON:" or "Moon:", keep the label exactly as it is and
-          translate only the rest.
+        - Subtitles often start with the speaker's name, with or without a colon: "MOON: Stay close." or
+          "Lt. West Okay, listen up." (the game shows the name "Lt. West" before the words). Keep the name exactly as
+          written, including any rank, follow it with a colon and translate only what is said:
+          "Lt. West: Tamam, dinleyin." Use the earlier lines and the "Names" list to tell a name from the first word of
+          the sentence; a word the game cannot have meant as a name is part of the sentence.
         - Do not translate names of characters, places, factions or items. Spell them as in the "Names" list.
         - The text comes from OCR and may contain recognition mistakes ("cali" for "call", "l" for "I", missing
           punctuation). Infer what the English most likely says and translate that.
@@ -70,23 +73,27 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
 
         Voice-over is on: a Turkish text-to-speech voice also reads your translation aloud over the game. Instead of
         plain text, reply with JSON: one entry in "lines" per input line, in the same order.
-        - "text": the subtitle translation of that line, exactly as you would write it as a subtitle (keep a speaker
-          label if the line has one).
-        - "spoken": what the voice says: the same meaning in natural spoken Turkish, without speaker labels, dashes,
-          button names or symbols. Make it as short as the meaning allows so the voice keeps up with the game
-          (shorter than the subtitle when possible, never adding anything). Write numbers as words.
+        - "speaker": the speaker's name as written at the start of the line (with or without a colon, including any
+          rank, e.g. "Lt. West"), or "" when the line does not start with a name.
+        - "text": the subtitle translation of what is said, without the speaker's name.
+        - "spoken": what the voice says: the same meaning in natural spoken Turkish, without names, dashes, button
+          names or symbols. Make it as short as the meaning allows so the voice keeps up with the game (shorter than
+          the subtitle when possible, never adding anything). Write numbers as words.
         - "emotion": how the line is delivered, judged from the words, the earlier lines and the situation: "neutral",
           "happy", "sad", "angry", "surprised" or "calm".
-        - "gender": the speaker's gender when the name, the context or the way they are addressed makes it clear:
-          "female" or "male"; otherwise "unknown".
+        - "gender": "female" or "male" only when it is certain - a clearly female or male name, "she"/"he" or
+          "ma'am"/"sir" said about this speaker. Many names (Moon, Jae, Park, Cho...) can be either: then "unknown".
+        - "dialogue": true when the line is something a character says; false for game interface text that is not
+          spoken - ammo or score counters, weapon or item names, objectives, save notices, menu text. Only dialogue
+          lines are voiced.
         """;
 
     internal const string DubbingSchema = """
         {"type":"object","additionalProperties":false,"required":["lines"],"properties":{"lines":{"type":"array","items":{
-        "type":"object","additionalProperties":false,"required":["text","spoken","emotion","gender"],"properties":{
-        "text":{"type":"string"},"spoken":{"type":"string"},
+        "type":"object","additionalProperties":false,"required":["speaker","text","spoken","emotion","gender","dialogue"],"properties":{
+        "speaker":{"type":"string"},"text":{"type":"string"},"spoken":{"type":"string"},
         "emotion":{"type":"string","enum":["neutral","happy","sad","angry","surprised","calm"]},
-        "gender":{"type":"string","enum":["female","male","unknown"]}}}}}}
+        "gender":{"type":"string","enum":["female","male","unknown"]},"dialogue":{"type":"boolean"}}}}}}
         """;
 
     private readonly IClaudeCompletion _claude;
@@ -205,6 +212,9 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
             _log?.Write(dubbing ? "claude+dublaj" : "claude", clock.ElapsedMilliseconds, source,
                 dubbing ? translated + "  [ses: " + string.Join(" / ", speech.Select(l => $"{l.Emotion?.ToString() ?? "nötr"},{l.Gender?.ToString() ?? "?"}: {l.Turkish}")) + "]" : translated);
             LastError = null;
+            // Konuşmacı adları sonraki isteklerde "Names" listesiyle gönderilir: adlar tutarlı yazılır ve tanınır.
+            foreach (var name in speech.Select(line => line.Speaker).OfType<string>())
+                if (name.Length >= 2 && _names.Count < 64) _names[name] = 0;
             if (_cache.Count >= CacheLimit) _cache.Clear();
             _cache[text] = translated;
             if (_speech.Count >= 512) _speech.Clear();
@@ -243,7 +253,9 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
         for (var i = 0; i < english.Length && i < turkish.Length; i++)
         {
             var pieces = SubtitleSegmenter.Split(english[i]);
-            var speaker = pieces.Select(SubtitleSegmenter.LabelName).FirstOrDefault(name => name is { Length: > 0 });
+            // İngilizcede iki nokta yoksa ("Lt. West Okay…") Claude'un çevirisinde koyduğu "Lt. West:" etiketi.
+            var speaker = pieces.Select(SubtitleSegmenter.LabelName).FirstOrDefault(name => name is { Length: > 0 })
+                ?? SubtitleSegmenter.Split(turkish[i]).Select(SubtitleSegmenter.LabelName).FirstOrDefault(name => name is { Length: > 0 });
             var newTurn = pieces.Count > 0 && !pieces[0].Translate && "-–—".Contains(pieces[0].Text[0]);
             var spoken = turkish[i].Trim();
             if (speaker is not null && spoken.StartsWith(speaker + ":", StringComparison.OrdinalIgnoreCase))
@@ -274,9 +286,16 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
                 var entry = entries[i];
                 var text = Clean(entry.GetProperty("text").GetString() ?? "").ReplaceLineEndings(" ");
                 if (text.Length == 0) return null;
-                subtitles.Add(text);
                 var pieces = SubtitleSegmenter.Split(english[i]);
-                var speaker = pieces.Select(SubtitleSegmenter.LabelName).FirstOrDefault(name => name is { Length: > 0 });
+                // Konuşmacı: Claude'un bulduğu ad (iki noktasız adlar da: "Lt. West Okay…"), yoksa "AD:" etiketi.
+                var named = entry.TryGetProperty("speaker", out var who) ? (who.GetString() ?? "").Trim().TrimEnd(':').Trim() : "";
+                var speaker = named.Length > 0 ? named
+                    : pieces.Select(SubtitleSegmenter.LabelName).FirstOrDefault(name => name is { Length: > 0 });
+                if (speaker is not null && text.StartsWith(speaker + ":", StringComparison.OrdinalIgnoreCase))
+                    text = text[(speaker.Length + 1)..].Trim();
+                subtitles.Add(speaker is null ? text : $"{speaker}: {text}");
+                // Oyun arayüzü yazıları (sayaç, silah adı, kayıt bildirimi) altyazıda kalır ama seslendirilmez.
+                if (entry.TryGetProperty("dialogue", out var dialogue) && dialogue.ValueKind == System.Text.Json.JsonValueKind.False) continue;
                 var newTurn = pieces.Count > 0 && !pieces[0].Translate && "-–—".Contains(pieces[0].Text[0]);
                 var spoken = (entry.GetProperty("spoken").GetString() ?? "").Trim().TrimStart('-', '–', '—', ' ');
                 if (!spoken.Any(char.IsLetter)) continue;

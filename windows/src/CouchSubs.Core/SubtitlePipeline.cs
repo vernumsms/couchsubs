@@ -75,7 +75,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         // Yazı tanımanın uydurduğu sözcük çöpleri ("ou$3e") de çevirmene gitmez.
         // Alandaki menü ve köşe göstergeleri de altyazı değildir; yalnız altyazı bloğu çevrilir ve kutusu ona göre olur.
         var area = new TextBox(region.Left, region.Top, region.Right, region.Bottom);
-        var reading = raw.WithoutButtonPrompts().WithoutOcrNoise().SubtitleBlock(area);
+        // Mermi/puan sayaçları da altyazı değildir (her atışta değişip yeniden çevriliyordu).
+        var reading = raw.WithoutButtonPrompts().WithoutOcrNoise().WithoutHudNumbers().SubtitleBlock(area);
 
         lock (gate)
         {
@@ -95,7 +96,10 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                     // Çevirmen burada, istek sırasıyla çağrılır (ayrı görevle başlatılsa sıra karışabilirdi).
                     // Çeviri hemen bittiyse kendini zaten listeden çıkarmıştır; yeniden eklenmez.
                     var box = reading.Box?.PlacedIn(area).CenteredOnScreen();
-                    var task = TranslateAndForget(action.Text!, box, number, current);
+                    // Az önce çevrilen replik yeniden okunduysa (altyazı titredi, yazı tanıma bir harfi farklı okudu,
+                    // konuşmacı adı sonradan belirdi) çevirisi yeniden istenmez; kayıtlı çeviri gösterilir.
+                    var known = RecentTranslation(TextMatch.Normalize(action.Text!));
+                    var task = TranslateAndForget(action.Text!, box, number, current, known);
                     if (!task.IsCompleted) translations[number] = task;
                     break;
             }
@@ -117,19 +121,100 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     /// <summary>Satır ekrandan kalktıktan sonra gelen çevirinin TV'de kalacağı süre (TV uygulamasıyla aynı kural).</summary>
     public static int ReadingTime(string text) => Math.Min(8000, 2000 + (text.Length * 60));
 
-    private async Task TranslateAndForget(string source, TextBox? box, int number, int current)
+    private async Task TranslateAndForget(string source, TextBox? box, int number, int current, string? known)
     {
-        await Translate(source, box, number, current);
+        await Translate(source, box, number, current, known);
         lock (gate) translations.Remove(number);
     }
 
-    private async Task Translate(string source, TextBox? box, int number, int current)
+    // --- Yakın zamanda çevrilen ve seslendirilen replikler ---
+
+    /// <summary>Bu süre içinde yeniden okunan aynı replik yeniden çevrilmez ve seslendirilmez.</summary>
+    private const int RecentMs = 8000;
+
+    private sealed class RecentLine
+    {
+        public required string Key { get; init; }
+        public string Translation { get; set; } = "";
+        public long SeenAt { get; set; }
+        public long SpokenAt { get; set; } = long.MinValue / 2;
+    }
+
+    private readonly List<RecentLine> recent = [];
+
+    /// <summary>
+    /// Aynı replik mi: karakter/sözcük benzerliği ya da biri ötekinin sonu ("here take my radio" ile konuşmacı adı
+    /// sonradan beliren "moon here take my radio").
+    /// </summary>
+    public static bool SameLine(string a, string b)
+    {
+        if (TextMatch.IsSameSubtitle(a, b)) return true;
+        if (Math.Min(a.Length, b.Length) < 3) return false;
+        // Başa konuşmacı adı eklenmiş: "moon here take my radio" / "here take my radio".
+        if (a.EndsWith(b, StringComparison.Ordinal) || b.EndsWith(a, StringComparison.Ordinal)) return true;
+        // Sona yazı tanıma kırıntısı eklenmiş: "cho shit j" / "cho shit" (fark en çok 3 karakter).
+        return Math.Abs(a.Length - b.Length) <= 3 && (a.StartsWith(b, StringComparison.Ordinal) || b.StartsWith(a, StringComparison.Ordinal));
+    }
+
+    private RecentLine? FindRecent(string key, long now)
+    {
+        recent.RemoveAll(line => now - line.SeenAt > RecentMs && now - line.SpokenAt > RecentMs);
+        for (var i = recent.Count - 1; i >= 0; i--)
+            if (SameLine(key, recent[i].Key)) return recent[i];
+        return null;
+    }
+
+    /// <summary>Kilit altında çağrılır.</summary>
+    private string? RecentTranslation(string key)
+    {
+        var now = Environment.TickCount64;
+        return FindRecent(key, now) is { Translation.Length: > 0, SeenAt: var seen } line && now - seen <= RecentMs ? line.Translation : null;
+    }
+
+    /// <summary>Gösterilen çeviriyi hatırlar (kilit altında).</summary>
+    private void Remember(string source, string translation)
+    {
+        var key = TextMatch.Normalize(source);
+        var now = Environment.TickCount64;
+        if (FindRecent(key, now) is not { } line)
+        {
+            line = new RecentLine { Key = key };
+            recent.Add(line);
+            if (recent.Count > 32) recent.RemoveAt(0);
+        }
+        line.Translation = translation;
+        line.SeenAt = now;
+    }
+
+    /// <summary>Replik az önce seslendirildiyse yeniden seslendirilmez; dublaj her yeniden okumada baştan başlamasın.</summary>
+    private void SpeakOnce(string source)
+    {
+        if (SpeechReady is not { } speech) return;
+        var key = TextMatch.Normalize(source);
+        lock (gate)
+        {
+            var now = Environment.TickCount64;
+            if (FindRecent(key, now) is { } line)
+            {
+                if (now - line.SpokenAt <= RecentMs) return;
+                line.SpokenAt = now;
+            }
+            else
+            {
+                recent.Add(new RecentLine { Key = key, SeenAt = now, SpokenAt = now });
+            }
+        }
+        speech(translator.SpokenLines(source));
+    }
+
+    private async Task Translate(string source, TextBox? box, int number, int current, string? known = null)
     {
         string translated;
         Task<string?>? refined = null;
         try
         {
-            if (translator is IProgressiveTranslator progressive)
+            if (known is not null) translated = known;
+            else if (translator is IProgressiveTranslator progressive)
             {
                 var result = await progressive.TranslateProgressivelyAsync(source);
                 translated = result.Quick;
@@ -168,12 +253,15 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             sender.SendSubtitle(translated, number == lineOnScreen ? 15000 : ReadingTime(translated), box);
             LastPair = (source, translated);
             LastBox = box;
+            Remember(source, translated);
         }
         PairShown?.Invoke(source, translated);
+        // Yeniden okunan replik: kayıtlı çevirisi gösterildi, seslendirilmez.
+        if (known is not null) return;
         // Dublaj iyileştirilmiş çeviriyi bekler (varsa); yoksa hızlı çeviri hemen seslendirilir.
         if (refined is null)
         {
-            if (SpeechReady is { } speech) speech(translator.SpokenLines(source));
+            SpeakOnce(source);
             return;
         }
         await ShowRefined(source, translated, refined, box, number, current);
@@ -196,9 +284,10 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                 LastPair = (source, better);
                 changed = true;
             }
+            if (current == session && better is { Length: > 0 }) Remember(source, better);
         }
         if (changed) PairShown?.Invoke(source, better!);
-        if (SpeechReady is { } speech) speech(translator.SpokenLines(source));
+        SpeakOnce(source);
     }
 
     /// <summary>Okuma durunca TV'deki son altyazıyı kaldırır.</summary>
@@ -208,6 +297,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         {
             session++;
             lineOnScreen = null;
+            recent.Clear();
             lastReading = Reading.Empty;
             schedule.Reset();
             if (stabilizer.Reset() == StabilizerAction.Clear) sender.Clear();

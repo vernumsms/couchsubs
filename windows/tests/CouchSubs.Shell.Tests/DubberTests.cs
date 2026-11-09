@@ -110,9 +110,12 @@ public class DubberTests
         await dubber.DisposeAsync();
     }
 
-    /// <summary>Dublaj yazının gerisinde kalmaz: yeni altyazı gelince çalan eski cümle kesilir.</summary>
+    /// <summary>
+    /// Dublaj yazının gerisinde kalmaz ama sesi de kesmez: yeni altyazı gelince henüz çalınmamış eski cümle atlanır,
+    /// çalan ses durdurulmaz (hızlı sahnelerde her satırda kesilen ses anlaşılmıyordu).
+    /// </summary>
     [Fact]
-    public async Task NewSubtitleCutsTheLineStillPlaying()
+    public async Task NewSubtitleSkipsTheOldLineWithoutCuttingAudio()
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var synth = new FakeSynth { Gate = gate };
@@ -122,7 +125,7 @@ public class DubberTests
         dubber.Speak([new SpokenLine("One.", "Bir.")]);
         await WaitUntil(() => { lock (synth.Calls) return synth.Calls.Count == 1; });
         dubber.Speak([new SpokenLine("Next.", "Sonraki.")]);
-        Assert.Equal(1, audio.Stopped);
+        Assert.Equal(0, audio.Stopped);
         gate.SetResult();
         await WaitUntil(() => audio.Played == 1);
         await Task.Delay(300);

@@ -2,7 +2,16 @@ CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Ori
 
 **İndir:** [Windows (kurulum)](https://github.com/vernumsms/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)
 
-**Bu sürümde yeni (claude.3): akıllı Türkçe dublaj**
+**Bu sürümde yeni (claude.4): hızlı sahnelerde dublaj ve altyazı (Call of Duty denemesinden)**
+
+- **Dublaj artık yarıda kesilmez.** Yeni replik gelince çalan cümle tamamlanır, bekleyen eski cümleler atlanır ve hemen yeni repliğe geçilir.
+- **Aynı replik bir kez seslendirilir.** Altyazı titreyince, yazı tanıma bir harfi farklı okuyunca ya da konuşmacı adı yazıdan sonra belirince aynı replik yeniden çevrilmiyor ve baştan seslendirilmiyor (denemede bir replik 6 kez seslendirilmişti).
+- **Mermi sayacı ve göstergeler okunmaz.** Rakamı harfinden çok satırlar atılıyor; Claude oyun arayüzü yazılarını (silah adı, kayıt bildirimi) seslendirmiyor.
+- **Aynı anda konuşan birden çok kişi**, araları açık olsa da alt alta, oyundaki sırayla gösteriliyor.
+- **İki noktasız konuşmacı adları** ("Lt. West Okay, listen up.") tanınıyor: altyazı "Lt. West: Tamam, dinleyin." olarak yazılıyor ve her karakter kendi sesiyle konuşuyor.
+- **Yanlış kadın sesi düzeltildi.** Claude cinsiyeti yalnız kesin olduğunda söylüyor ("Moon", "Jae" gibi belirsiz adlarda söylemiyor); bilinmeyen karakterler anlatıcıyla aynı cinsiyette ses alıyor.
+
+**claude.3'te gelenler: akıllı Türkçe dublaj**
 
 - **Duyguyu Claude seçer.** Dublaj açıkken Claude her replik için sahneye ve önceki satırlara bakarak tonu belirler (mutlu, üzgün, kızgın, şaşkın, sakin, nötr); ses o tonda okunur. Önceden ton yalnız İngilizce metindeki anahtar sözcüklerden tahmin ediliyordu.
 - **Doğru ses, doğru karakter.** Claude konuşanın cinsiyetini addan ve bağlamdan tahmin eder; listede olmayan karakterlere ve etiketsiz satırlara uygun ses atanır.

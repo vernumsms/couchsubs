@@ -34,6 +34,25 @@ public class SubtitleBlockTests
         Assert.Equal(new TextBox(0.25, 0.7, 0.75, 0.77), block.Box!.Value with { Bottom = Math.Round(block.Box!.Value.Bottom, 2) });
     }
 
+    /// Aynı anda konuşan iki kişinin satırları arasında boşluk olsa da ikisi de, yukarıdan aşağıya okunur.
+    [Fact]
+    public void StackedSpeakersWithGapAreBothKept()
+    {
+        var reading = new Reading([
+            Line("Jae Follow me.", 0.4, 0.62, 0.6),
+            Line("Park How did they get vehicles here so fast?", 0.3, 0.82, 0.7),
+        ]);
+        Assert.Equal("Jae Follow me.\nPark How did they get vehicles here so fast?", reading.SubtitleBlock(Area).Text);
+    }
+
+    /// Mermi sayacı gibi rakam satırları altyazı değildir.
+    [Fact]
+    public void AmmoCounterIsDropped()
+    {
+        var reading = new Reading([Line("31 / 050", 0.8, 0.9, 0.9), Line("Han 86", 0.8, 0.95, 0.9), Line("Copy that.", 0.42, 0.8, 0.58)]);
+        Assert.Equal(["Han 86", "Copy that."], reading.WithoutHudNumbers().Lines.Select(line => line.Text));
+    }
+
     [Fact]
     public void TwoLineSubtitleStaysTogether()
     {

@@ -224,6 +224,25 @@ public class ClaudeTranslatorTests
         Assert.Null(await (await translator.TranslateProgressivelyAsync(Lines("Hold the gate.", "Run!"))).Refined);
     }
 
+    /// Call of Duty: ad iki noktasız ("Lt. West Okay…"); Claude adı ayırır, arayüz yazısı seslendirilmez.
+    [Fact]
+    public async Task SpeakerWithoutColonAndInterfaceTextAreHandled()
+    {
+        const string json = """
+            {"lines":[
+              {"speaker":"Lt. West","text":"Tamam, dinleyin.","spoken":"Tamam, dinleyin.","emotion":"calm","gender":"male","dialogue":true},
+              {"speaker":"","text":"Han 86","spoken":"Han seksen altı","emotion":"neutral","gender":"unknown","dialogue":false}
+            ]}
+            """;
+        var translator = new ClaudeTranslator(new FakeClaude(_ => json), new FakeLocal(), dubbing: () => true);
+        var source = Lines("Lt. West Okay, listen up.", "Han 86");
+
+        Assert.Equal(Lines("Lt. West: Tamam, dinleyin.", "Han 86"), await (await translator.TranslateProgressivelyAsync(source)).Refined);
+        var lines = translator.SpokenLines(source);
+        Assert.Single(lines);
+        Assert.Equal(("Lt. West", "Tamam, dinleyin."), (lines[0].Speaker, lines[0].Turkish));
+    }
+
     [Fact]
     public void DubbingSchemaIsValidJson()
     {

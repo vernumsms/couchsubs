@@ -54,8 +54,9 @@ public sealed class VoiceCast
             _lastWasPartner = false;
             var key = Key(speaker);
             if (Assignments.TryGetValue(key, out var known)) return known;
-            // Ad listesinde yoksa yapay zekânın bağlamdan tahmin ettiği cinsiyet.
-            var voice = Pick(NameGender.Guess(speaker) ?? line.Gender);
+            // Ad listesinde yoksa yapay zekânın bağlamdan tahmin ettiği cinsiyet; o da bilinmiyorsa anlatıcının sesiyle
+            // aynı cinsiyet (Call of Duty'de "Moon", "Jae" gibi belirsiz adlı askerlere kadın sesi gidiyordu).
+            var voice = Pick(NameGender.Guess(speaker) ?? line.Gender ?? Narrator.Gender());
             Assignments[key] = voice;
             assigned = true;
             return voice;

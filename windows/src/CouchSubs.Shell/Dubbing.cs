@@ -73,6 +73,8 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
     private readonly Queue<(SpokenLine Line, DubbingVoice? Preview)> queue = new();
     private ISpeechSynthesizer? synthesizer;
     private bool working;
+    /// <summary>Her yeni altyazıda artar; daha eski altyazının önceden hazırlanmış cümlesi çalınmaz.</summary>
+    private int batch;
     private int generation;
     private int Generation { get { lock (gate) return generation; } }
     private SubtitleServer? publishedOn;
@@ -99,24 +101,19 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
     {
         if (lines.Count == 0) return;
         PublishVoices();
-        bool interrupt;
         int number;
         lock (gate)
         {
-            // Yeni altyazı geldiyse öncekilerin cümleleri artık geç kalmıştır: bekleyenler atılır, çalan da kesilir.
-            // Ses yazının gerisinde kalıp oyunu karıştırmasın; dublaj hep ekrandaki altyazıyı söyler.
+            // Yeni altyazı geldiyse öncekilerin henüz çalınmamış cümleleri geç kalmıştır, atılır. Çalan cümle ise
+            // yarıda kesilmez: hızlı sahnelerde her yeni satırda kesilen ses anlaşılmıyordu. Çalan biter bitmez
+            // yeni satıra geçilir (önceden hazırlanmış eski cümle de atlanır).
             queue.Clear();
             foreach (var line in lines) queue.Enqueue((line, null));
             while (queue.Count > Backlog) queue.Dequeue();
-            interrupt = working;
+            batch++;
+            if (working) return;
             working = true;
-            // Sıra ile kuşak aynı kilit altında değişir; eski döngü yeni cümleyi alamaz.
             number = ++generation;
-        }
-        if (interrupt)
-        {
-            audio.Stop();
-            server().StopSpeech();
         }
         _ = Task.Run(() => RunAsync(number));
     }
@@ -165,15 +162,19 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
 
     private async Task RunAsync(int number)
     {
-        Task<(SpeechAudio Audio, bool Preview)?>? next = Next(number);
+        Task<(SpeechAudio Audio, bool Preview, int Batch)?>? next = Next(number);
         while (next is not null)
         {
             var result = await next;
-            // Bu arada yeni altyazı geldiyse eski cümle hiç çalınmaz.
+            // Durdurulduysa hiçbir şey çalınmaz.
             if (number != Generation) return;
             if (result is not { } ready) break;
             // Bu cümle çalarken sonraki hazırlanır.
             next = Next(number);
+            // Hazırlanırken yeni altyazı geldiyse bu eski cümle atlanır; ses ekrandaki satırın gerisinde kalmasın.
+            bool stale;
+            lock (gate) stale = !ready.Preview && ready.Batch != batch;
+            if (stale) continue;
             await PlayAsync(ready.Audio, ready.Preview ? DubbingOutput.Computer : Output);
             if (number != Generation) return;
         }
@@ -186,15 +187,17 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
         await RunAsync(number);
     }
 
-    private Task<(SpeechAudio, bool)?>? Next(int number)
+    private Task<(SpeechAudio, bool, int)?>? Next(int number)
     {
         SpokenLine line;
         DubbingVoice? preview;
+        int lineBatch;
         lock (gate)
         {
             // Geç başlayan eski döngü yeni altyazının cümlesini alıp atmasın.
             if (queue.Count == 0 || number != generation) return null;
             (line, preview) = queue.Dequeue();
+            lineBatch = batch;
         }
         DubbingVoice voice;
         if (preview is { } chosen)
@@ -216,11 +219,11 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
         var text = SpeechText.Prepare(line.Turkish, line.Emotion ?? SpeechEmotions.Guess(line.English));
         var url = new Uri($"http://127.0.0.1:{serverPort()}/voices/{voice.FileName()}.wav");
         var engine = Synthesizer();
-        return Task.Run<(SpeechAudio, bool)?>(async () =>
+        return Task.Run<(SpeechAudio, bool, int)?>(async () =>
         {
             try
             {
-                return ((await engine.SynthesizeAsync(text, url)).Tightened(), preview is not null);
+                return ((await engine.SynthesizeAsync(text, url)).Tightened(), preview is not null, lineBatch);
             }
             // Motor ne olursa olsun (pocket-tts, Windows sesi) bir cümlenin hatası dublajı durdurmaz.
             catch (Exception error)

@@ -102,7 +102,9 @@ public sealed class Reading
             var box = reading.Box!.Value.PlacedIn(area);
             return Math.Abs(((box.Left + box.Right) / 2) - 0.5) <= 0.12;
         }).ToList();
-        if (centered.Count > 0) return centered.MaxBy(reading => reading.Box!.Value.Bottom)!;
+        // Aynı anda konuşan birden çok kişinin satırları alt alta ayrı bloklar olabilir: hepsi yukarıdan aşağıya alınır.
+        if (centered.Count > 1) return new Reading(centered.OrderBy(reading => reading.Box!.Value.Top).SelectMany(reading => reading.Lines));
+        if (centered.Count == 1) return centered[0];
         return candidates.Where(reading => WordCount(reading.Text) >= 3).MaxBy(reading => reading.Box!.Value.Bottom) ?? Empty;
     }
 
@@ -116,6 +118,16 @@ public sealed class Reading
         var narrower = Math.Min(box.Right - box.Left, last.Right - last.Left);
         return overlap > 0 && overlap >= narrower * 0.5;
     }
+
+    /// <summary>
+    /// Oyun göstergelerindeki sayı satırları (mermi "31 / 050", puan, süre) altyazı değildir: rakamı harfinden çok olan
+    /// satırlar atılır. Yoksa her atışta değişen sayaç yeniden çevrilip seslendiriliyordu.
+    /// </summary>
+    public Reading WithoutHudNumbers() => new(Lines.Where(line =>
+    {
+        int digits = line.Text.Count(char.IsDigit), letters = line.Text.Count(char.IsLetter);
+        return digits == 0 || letters > digits;
+    }));
 
     /// <summary>Alt alta kısa ve noktalamasız satırlar ("MAP", "HELP", "SOCIAL CLUB") menüdür, konuşma değil.</summary>
     internal bool IsMenu => Lines.Count >= 3 &&
