@@ -33,7 +33,7 @@ public readonly record struct TextBox(double Left, double Top, double Right, dou
 public sealed record TextLine(string Text, TextBox? Box = null);
 
 /// <summary>Bir karenin okunan satırları, yukarıdan aşağı (Mac: CouchSubsCore/Reading.swift).</summary>
-public sealed class Reading
+public sealed partial class Reading
 {
     public static readonly Reading Empty = new([]);
 
@@ -123,6 +123,17 @@ public sealed class Reading
     /// Oyun göstergelerindeki sayı satırları (mermi "31 / 050", puan, süre) altyazı değildir: rakamı harfinden çok olan
     /// satırlar atılır. Yoksa her atışta değişen sayaç yeniden çevrilip seslendiriliyordu.
     /// </summary>
+    /// <summary>
+    /// Altyazı satırına yapışık okunan kumanda ipuçları ("— MOUNT Don't need to see you…", "RS MOUNT", "EQUIP"):
+    /// ipucu sözcüğü atılır, yalnız ipucundan oluşan satır tümden atılır.
+    /// </summary>
+    public Reading WithoutPromptWords() => new(Lines
+        .Select(line => line with { Text = PromptWords().Replace(line.Text, "").Trim() })
+        .Where(line => line.Text.Length > 0));
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^(?:[—–\-•·]\s*)?(?:(?:RS|LS|R3|L3|R1|L1|R2|L2|\d|[A-Za-z]{1,2})\s+)?(?:MOUNT|EQUIP)\b[\s:—–\-]*")]
+    private static partial System.Text.RegularExpressions.Regex PromptWords();
+
     public Reading WithoutHudNumbers() => new(Lines.Where(line =>
     {
         int digits = line.Text.Count(char.IsDigit), letters = line.Text.Count(char.IsLetter);

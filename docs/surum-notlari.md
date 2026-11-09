@@ -2,7 +2,12 @@ CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Ori
 
 **İndir:** [Windows (kurulum)](https://github.com/vernumsms/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)
 
-**Bu sürümde yeni (claude.6): sakin altyazı, arka plan sesleri**
+**Bu sürümde yeni (claude.7): satır önbelleği, daha hızlı çeviri**
+
+- **Yalnız yeni satır çevrilir.** Oyun önceki replikleri ekranda tutup yenisini altına eklediğinde (dört satıra kadar) eskiden bütün blok yeniden çevriliyordu; dört satırda yanıt 2,3 sn sürüyordu. Artık önceden çevrilmiş satırlar önbellekten geliyor, Claude'a yalnız yeni satır gidiyor (öncekiler bağlam olarak): gecikme ve maliyet düşüyor. Bütün satırlar önbellekteyse Claude'a hiç gidilmiyor.
+- **Satıra yapışık kumanda ipuçları temizlenir** ("— MOUNT Don't need to see you…", "RS MOUNT", "EQUIP").
+
+**claude.6'da gelenler: sakin altyazı, arka plan sesleri**
 
 - **Altyazı titremez.** Çevirisi süren replik yeniden okunduğunda (konuşmacı adı bir görünüp bir kayboluyor) yeni çeviri istenmiyor; denemede aynı replik bir saniyede yedi kez çevriliyor, altyazı her seferinde değişiyordu.
 - **Bozuk okumalar ekrana çıkmaz.** Anlık modda her satır iki kare aynı okunmadan kabul edilmiyor (≈50 ms); yazı belirirken okunan çöp satırlar eleniyor. Claude da okunamayan satırı uydurmak yerine boş bırakıyor.

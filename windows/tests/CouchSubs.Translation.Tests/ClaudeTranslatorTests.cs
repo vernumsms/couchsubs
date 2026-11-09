@@ -284,6 +284,36 @@ public class ClaudeTranslatorTests
         Assert.False(Assert.Single(alone.SpokenLines("[He's heading to the helo!]")).Background);
     }
 
+    /// Oyun önceki satırı ekranda tutup yenisini altına ekleyince ("A / B", sonra "B / C") Claude'a yalnız C gider.
+    [Fact]
+    public async Task OnlyNewLinesAreSentToClaude()
+    {
+        var claude = new FakeClaude(user =>
+        {
+            var lines = LastLine(user.ReplaceLineEndings("\n")).Split('\n');
+            return string.Join("\n", lines.Select(line => "[tr] " + line));
+        });
+        var translator = new ClaudeTranslator(claude, new FakeLocal());
+        await (await translator.TranslateProgressivelyAsync(Lines("Take out that RPG!", "Drive him back!"))).Refined;
+
+        var second = await (await translator.TranslateProgressivelyAsync(Lines("Drive him back!", "Shoot it down!"))).Refined;
+
+        Assert.EndsWith("Translate:\nShoot it down!", claude.Requests[1].User.ReplaceLineEndings("\n"));
+        Assert.Equal(Lines("[tr] Drive him back!", "[tr] Shoot it down!"), second);
+        // Hepsi önbellekteyse Claude'a hiç gidilmez.
+        Assert.Equal(Lines("[tr] Take out that RPG!", "[tr] Shoot it down!"),
+            await (await translator.TranslateProgressivelyAsync(Lines("Take out that RPG!", "Shoot it down!"))).Refined);
+        Assert.Equal(2, claude.Requests.Count);
+    }
+
+    [Theory]
+    [InlineData("here take my radio", "moon here take my radio", true)]
+    [InlineData("helo s armored sweetheart american made", "hollis annorod sweetheart american made", true)]
+    [InlineData("run", "you need to run", false)]
+    [InlineData("get to the wheelhouse", "get out here", false)]
+    public void StoredLineMatchingIsStrict(string a, string b, bool same) =>
+        Assert.Equal(same, ClaudeTranslator.SameStoredLine(a, b));
+
     [Fact]
     public void DubbingSchemaIsValidJson()
     {

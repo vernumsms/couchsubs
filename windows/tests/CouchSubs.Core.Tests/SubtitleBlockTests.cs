@@ -45,6 +45,14 @@ public class SubtitleBlockTests
         Assert.Equal("Jae Follow me.\nPark How did they get vehicles here so fast?", reading.SubtitleBlock(Area).Text);
     }
 
+    /// Satıra yapışık kumanda ipucu atılır; yalnız ipucundan oluşan satır tümden atılır.
+    [Fact]
+    public void ButtonPromptWordsAreRemoved()
+    {
+        var reading = new Reading([Line("— MOUNT Don't need to see you to kill you.", 0.3, 0.7, 0.7), Line("RS MOUNT", 0.45, 0.8, 0.55), Line("EQUIP", 0.45, 0.85, 0.55)]);
+        Assert.Equal(["Don't need to see you to kill you."], reading.WithoutPromptWords().Lines.Select(line => line.Text));
+    }
+
     /// Mermi sayacı gibi rakam satırları altyazı değildir.
     [Fact]
     public void AmmoCounterIsDropped()

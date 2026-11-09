@@ -176,7 +176,14 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
         RememberNames(text);
         // Satırlar oyundaki gibi ayrılır; Claude aynı sayıda satırla, aynı sırayla yanıt vermeli.
         var source = SubtitleSegmenter.StackedLines(text);
-        var expectedLines = source.Split('\n').Length;
+        var allLines = source.Split('\n');
+        // Satır önbelleği: oyun önceki replikleri ekranda tutup yenisini altına ekliyor ("A / B / C / D"). Önceden
+        // çevrilmiş satırlar yeniden çevrilmez; Claude'a yalnız yeni satırlar gider (öncekiler bağlam olarak gider).
+        // Denemede dört satırlık blokta yanıt 2,3 sn sürüyordu, tek satırda 1,2 sn.
+        var known = allLines.Select(LookupLine).ToArray();
+        var missing = Enumerable.Range(0, allLines.Length).Where(i => known[i] is null).ToList();
+        var request = missing.Count == allLines.Length ? source : string.Join('\n', missing.Select(i => allLines[i]));
+        var expectedLines = missing.Count;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(RequestTimeout);
         var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -185,18 +192,30 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
         {
             string translated = "";
             IReadOnlyList<SpokenLine> speech = [];
-            if (dubbing)
+            List<LineResult>? fresh = null;
+            (string Translated, IReadOnlyList<SpokenLine> Speech)? merged = null;
+            if (missing.Count == 0)
+            {
+                // Bütün satırlar daha önce çevrilmiş: Claude'a hiç gidilmez.
+                if (Assemble([.. known.Select(result => result!)]) is not { } all) return null;
+                (translated, speech) = all;
+                _log?.Write("onbellek", clock.ElapsedMilliseconds, source, translated);
+                dubbing = false;
+            }
+            else if (dubbing)
             {
                 try
                 {
-                    var json = await _claude.CompleteJsonAsync(SystemPrompt + DubbingPrompt, UserMessage(source), DubbingSchema, timeout.Token)
+                    var json = await _claude.CompleteJsonAsync(SystemPrompt + DubbingPrompt, UserMessage(request), DubbingSchema, timeout.Token)
                         .ConfigureAwait(false);
-                    if (ParseDubbing(source, json) is not { } parsed)
+                    if (ParseEntries(request, json) is not { } parsed)
                     {
-                        _log?.Write("dublaj-yaniti-uymadi", clock.ElapsedMilliseconds, source, json);
+                        _log?.Write("dublaj-yaniti-uymadi", clock.ElapsedMilliseconds, request, json);
                         return null;
                     }
-                    (translated, speech) = parsed;
+                    if (parsed.Aligned) fresh = parsed.Entries;
+                    else if (Assemble(parsed.Entries) is { } block) merged = block;
+                    else return null;
                 }
                 // İstek reddedildiyse (ör. bu model yapılandırılmış çıktıyı desteklemiyor) oturum boyunca düz çeviriye
                 // geçilir: dublaj yine çalışır, ton ve cinsiyet eski yolla tahmin edilir. Anahtar gerçekten geçersizse
@@ -208,20 +227,49 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
                     dubbing = false;
                 }
             }
-            if (!dubbing)
+            if (!dubbing && missing.Count > 0)
             {
-                translated = Clean(await _claude.CompleteAsync(SystemPrompt, UserMessage(source), timeout.Token).ConfigureAwait(false));
-                if (translated.Length == 0) return null;
+                var plain = Clean(await _claude.CompleteAsync(SystemPrompt, UserMessage(request), timeout.Token).ConfigureAwait(false));
+                if (plain.Length == 0) return null;
                 // Satır birleştirildiyse ya da bölündüyse sıra güvenilmez; cihaz üstü çeviri (satırları korur) kalır.
-                if (translated.Split('\n').Length != expectedLines)
+                var parts = plain.Split('\n');
+                if (parts.Length != expectedLines)
                 {
-                    _log?.Write("satir-sayisi-tutmadi", clock.ElapsedMilliseconds, source, translated);
+                    _log?.Write("satir-sayisi-tutmadi", clock.ElapsedMilliseconds, request, plain);
                     return null;
                 }
-                speech = Speech(source, translated);
+                var requested = request.Split('\n');
+                fresh = [.. parts.Select((part, j) => new LineResult(part, false, Speech(requested[j], part).FirstOrDefault()))];
             }
-            _log?.Write(dubbing ? "claude+dublaj" : "claude", clock.ElapsedMilliseconds, source,
-                dubbing ? translated + "  [ses: " + string.Join(" / ", speech.Select(l => $"{l.Emotion?.ToString() ?? "nötr"},{l.Gender?.ToString() ?? "?"}: {l.Turkish}")) + "]" : translated);
+            if (fresh is not null)
+            {
+                // Yeni satırlar önbelleğe yazılır; önbellektekilerle birlikte oyundaki sırayla birleştirilir.
+                for (var j = 0; j < fresh.Count; j++)
+                {
+                    known[missing[j]] = fresh[j];
+                    StoreLine(allLines[missing[j]], fresh[j]);
+                }
+                if (Assemble([.. known.Select(result => result!)]) is not { } all) return null;
+                (translated, speech) = all;
+            }
+            else if (merged is { } block)
+            {
+                // Claude yeni satırları birleştirdi: önbellektekiler yerinde, birleşen çeviri ilk yeni satırın yerinde.
+                var parts = new List<LineResult>();
+                var placed = false;
+                foreach (var result in known)
+                {
+                    if (result is not null) parts.Add(result);
+                    else if (!placed) { parts.Add(new LineResult(block.Translated, false, null)); placed = true; }
+                }
+                if (Assemble(parts) is not { } all) return null;
+                translated = all.Translated;
+                speech = [.. all.Speech, .. block.Speech];
+            }
+            if (missing.Count > 0)
+                _log?.Write(dubbing ? "claude+dublaj" : "claude", clock.ElapsedMilliseconds,
+                    missing.Count == allLines.Length ? source : $"{request}  (+{allLines.Length - missing.Count} satır önbellekten)",
+                    dubbing ? translated + "  [ses: " + string.Join(" / ", speech.Select(l => $"{l.Emotion?.ToString() ?? "nötr"},{l.Gender?.ToString() ?? "?"}{(l.Background ? ",arka" : "")}: {l.Turkish}")) + "]" : translated);
             LastError = null;
             // Konuşmacı adları sonraki isteklerde "Names" listesiyle gönderilir: adlar tutarlı yazılır ve tanınır.
             foreach (var name in speech.Select(line => line.Speaker).OfType<string>())
@@ -282,7 +330,29 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
     /// Dublaj yanıtı: altyazı metni ve her satırın seslendirilecek hali, tonu, konuşanın cinsiyeti. Satır sayısı
     /// tutmuyorsa ya da JSON bozuksa null (cihaz üstü çeviri kalır).
     /// </summary>
-    internal static (string Translated, IReadOnlyList<SpokenLine> Speech)? ParseDubbing(string source, string json)
+    internal static (string Translated, IReadOnlyList<SpokenLine> Speech)? ParseDubbing(string source, string json) =>
+        ParseEntries(source, json) is { } parsed ? Assemble(parsed.Entries) : null;
+
+    /// <summary>Bir ekran satırının çevirisi: altyazısı, arayüz yazısı mı (gösterilmez, seslendirilmez), konuşması.</summary>
+    internal sealed record LineResult(string Subtitle, bool Interface, SpokenLine? Speech);
+
+    /// <summary>Satır sonuçlarından altyazı ve konuşma; arayüz yazıları yalnız başkası yoksa gösterilir.</summary>
+    internal static (string Translated, IReadOnlyList<SpokenLine> Speech)? Assemble(IReadOnlyList<LineResult> results)
+    {
+        var shown = results.Where(result => !result.Interface && result.Subtitle.Length > 0).Select(result => result.Subtitle).ToList();
+        if (shown.Count == 0) shown = [.. results.Where(result => result.Subtitle.Length > 0).Select(result => result.Subtitle)];
+        if (shown.Count == 0) return null;
+        List<SpokenLine> speech = [.. results.Select(result => result.Speech).OfType<SpokenLine>()];
+        // Ekranda tek konuşma kaldıysa arka plan sayılmaz (ana replik o; sesi kısılmaz).
+        if (speech.Count > 0 && speech.All(line => line.Background)) speech = [.. speech.Select(line => line with { Background = false })];
+        return (string.Join('\n', shown), speech);
+    }
+
+    /// <summary>
+    /// Dublaj yanıtının satır satır sonuçları. <c>Aligned</c>: yanıt her İngilizce satır için bir giriş içeriyor (satır
+    /// önbelleğine yazılabilir). JSON bozuksa null.
+    /// </summary>
+    internal static (List<LineResult> Entries, bool Aligned)? ParseEntries(string source, string json)
     {
         var english = source.Split('\n');
         try
@@ -293,14 +363,17 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
             // Claude yarım kalan iki satırı tek cümleye birleştirdiyse de çeviri kullanılır; sıra yine yukarıdan aşağıya.
             // Satır sayısı tutmuyorsa İngilizce satırlarla eşleştirilmez (konuşmacı Claude'un "speaker" alanından).
             var aligned = entries.Count == english.Length;
-            var subtitles = new List<string>();
-            var interfaceText = new List<string>();
-            var speech = new List<SpokenLine>();
+            var results = new List<LineResult>();
             for (var i = 0; i < entries.Count; i++)
             {
                 var entry = entries[i];
                 var text = Clean(entry.GetProperty("text").GetString() ?? "").ReplaceLineEndings(" ");
-                if (text.Length == 0) continue;
+                // Okunamayan satır: boş bırakıldı, gösterilmez.
+                if (text.Length == 0)
+                {
+                    results.Add(new LineResult("", true, null));
+                    continue;
+                }
                 var pieces = aligned ? SubtitleSegmenter.Split(english[i]) : new List<SubtitleSegmenter.Piece>();
                 // Konuşmacı: Claude'un bulduğu ad (iki noktasız adlar da: "Lt. West Okay…"), yoksa "AD:" etiketi.
                 var named = entry.TryGetProperty("speaker", out var who) ? (who.GetString() ?? "").Trim().TrimEnd(':').Trim() : "";
@@ -313,16 +386,19 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
                 // da gösterilmez. Ekranda yalnız onlar varsa (ör. "NEW YORK CITY") gösterilir.
                 if (entry.TryGetProperty("dialogue", out var dialogue) && dialogue.ValueKind == System.Text.Json.JsonValueKind.False)
                 {
-                    interfaceText.Add(subtitle);
+                    results.Add(new LineResult(subtitle, true, null));
                     continue;
                 }
-                subtitles.Add(subtitle);
                 var newTurn = pieces.Count > 0 && !pieces[0].Translate && "-–—".Contains(pieces[0].Text[0]);
                 // Konuşma metni boşsa altyazı okunur (köşeli parantez ve simgeler olmadan).
                 var spoken = (entry.GetProperty("spoken").GetString() ?? "").Trim();
                 if (spoken.Length == 0) spoken = text.Replace("[", "").Replace("]", "");
                 spoken = spoken.TrimStart('-', '–', '—', ' ');
-                if (!spoken.Any(char.IsLetter)) continue;
+                if (!spoken.Any(char.IsLetter))
+                {
+                    results.Add(new LineResult(subtitle, false, null));
+                    continue;
+                }
                 var emotion = entry.GetProperty("emotion").GetString() switch
                 {
                     "happy" => SpeechEmotion.Happy,
@@ -341,12 +417,10 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
                 var said = aligned ? string.Join(' ', pieces.Where(piece => piece.Translate).Select(piece => piece.Text)) : "";
                 // Satırlar eşleşmediyse İngilizcesi bilinmez; tekrar önleme Türkçe metne bakar.
                 var background = entry.TryGetProperty("background", out var behind) && behind.ValueKind == System.Text.Json.JsonValueKind.True;
-                speech.Add(new SpokenLine(said.Length > 0 ? said : text, spoken, speaker, newTurn, emotion, gender, background));
+                results.Add(new LineResult(subtitle, false,
+                    new SpokenLine(said.Length > 0 ? said : text, spoken, speaker, newTurn, emotion, gender, background)));
             }
-            // Ekranda tek konuşma kaldıysa arka plan sayılmaz (ana replik o; sesi kısılmaz).
-            if (speech.Count > 0 && speech.All(line => line.Background)) speech = [.. speech.Select(line => line with { Background = false })];
-            if (subtitles.Count == 0) subtitles = interfaceText;
-            return subtitles.Count == 0 ? null : (string.Join('\n', subtitles), speech);
+            return (results, aligned);
         }
         catch (Exception error) when (error is System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException)
         {
@@ -375,6 +449,50 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
         message.AppendLine("Translate:");
         message.Append(text);
         return message.ToString();
+    }
+
+    // --- Satır önbelleği ---
+
+    private readonly object _linesGate = new();
+    private readonly List<(string Key, LineResult Result)> _lines = [];
+
+    /// <summary>Bu satır daha önce çevrildiyse sonucu; yazı tanıma farkları ve sonradan beliren konuşmacı adı aynı sayılır.</summary>
+    private LineResult? LookupLine(string line)
+    {
+        var key = TextMatch.Normalize(line);
+        if (key.Length == 0) return null;
+        lock (_linesGate)
+        {
+            for (var i = _lines.Count - 1; i >= 0; i--)
+                if (SameStoredLine(key, _lines[i].Key)) return _lines[i].Result;
+        }
+        return null;
+    }
+
+    private void StoreLine(string line, LineResult result)
+    {
+        var key = TextMatch.Normalize(line);
+        if (key.Length == 0) return;
+        lock (_linesGate)
+        {
+            _lines.Add((key, result));
+            if (_lines.Count > 256) _lines.RemoveAt(0);
+        }
+    }
+
+    /// <summary>
+    /// Önbellek eşleşmesi, ekrandaki tekrar önlemesinden sıkıdır (önbellek uzun yaşar): kısa satır uzun bir satırın sonu
+    /// diye eşleşmez ("run" / "you need to run"); başa eklenen konuşmacı adı ya da yazı tanıma farkı eşleşir.
+    /// </summary>
+    internal static bool SameStoredLine(string a, string b)
+    {
+        if (TextMatch.IsSameSubtitle(a, b)) return true;
+        int shorter = Math.Min(a.Length, b.Length), longer = Math.Max(a.Length, b.Length);
+        if (shorter >= 3 && shorter >= longer * 0.6
+            && (a.EndsWith(b, StringComparison.Ordinal) || b.EndsWith(a, StringComparison.Ordinal)
+                || a.StartsWith(b, StringComparison.Ordinal) || b.StartsWith(a, StringComparison.Ordinal)))
+            return true;
+        return shorter >= 16 && TextMatch.IsSimilar(a, b, 0.8);
     }
 
     /// <summary>Konuşmacı etiketlerindeki isimleri ("MOON: …") bir sonraki isteklerde tutarlı yazılsın diye saklar.</summary>
