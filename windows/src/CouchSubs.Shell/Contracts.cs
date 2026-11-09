@@ -173,6 +173,8 @@ public interface IAppServices
     IUpdater? Updater => null;
     /// <summary>Windows Güvenlik Duvarı izni; Windows dışında ve testlerde null (hiçbir şey önerilmez).</summary>
     IFirewall? Firewall => null;
+    /// <summary>Yerel tanı günlüğüne bir satır (tür, milisaniye, metin): çeviri ve dublaj zamanlaması. Testlerde yok sayılır.</summary>
+    void WriteDiagnostic(string kind, long milliseconds, string text) { }
 }
 
 /// <param name="Launched">false ise TV uygulaması açılamadı; büyük olasılıkla TV'de kurulu değil.</param>

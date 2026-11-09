@@ -25,6 +25,8 @@ public sealed class LiveServices : IAppServices
     public ITextTranslator? MakeAiTranslator(string key, string model, ITextTranslator? fallback, Func<bool> dubbing) =>
         new ClaudeTranslator(new AnthropicCompletion(key, model), fallback, AiLog, dubbing);
 
+    public void WriteDiagnostic(string kind, long milliseconds, string text) => AiLog.Write(kind, milliseconds, text, null);
+
     /// <summary>Yapay zekâ çevirisinin yerel günlüğü (kalite ve gecikmeyi incelemek için).</summary>
     private static readonly TranslationLog AiLog = new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CouchSubs", "ceviri.log"));

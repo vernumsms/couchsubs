@@ -111,12 +111,28 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
             foreach (var line in lines) queue.Enqueue((line, null));
             while (queue.Count > Backlog) queue.Dequeue();
             batch++;
-            if (working) return;
-            working = true;
-            number = ++generation;
+            batchAt = Environment.TickCount64;
+            busy = working;
+            if (!working)
+            {
+                working = true;
+                number = ++generation;
+            }
+            else number = 0;
         }
-        _ = Task.Run(() => RunAsync(number));
+        Log?.Invoke("dublaj-sira", lines.Count, string.Join(" / ", lines.Select(line => line.Turkish)) + (busy ? "  (önceki cümle çalıyor)" : ""));
+        if (number != 0) _ = Task.Run(() => RunAsync(number));
     }
+
+    /// <summary>
+    /// Dublaj zamanlaması günlüğü (tür, milisaniye, metin): sıraya giriş, cümlenin hazırlanma süresi, çalmaya başlama
+    /// gecikmesi, atlanan cümleler. Gecikmenin nerede biriktiğini gerçek oyun verisiyle görmek için.
+    /// </summary>
+    public Action<string, long, string>? Log { get; set; }
+
+    /// <summary>Son altyazının sıraya girdiği an (ms).</summary>
+    private long batchAt;
+    private bool busy;
 
     /// <summary>Ayarlardaki "Dinle": deneme her zaman bilgisayardan çalar, kullanıcı o an bilgisayarın başında.</summary>
     public void Preview(DubbingVoice voice)
@@ -162,7 +178,7 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
 
     private async Task RunAsync(int number)
     {
-        Task<(SpeechAudio Audio, bool Preview, int Batch)?>? next = Next(number);
+        Task<(SpeechAudio Audio, bool Preview, int Batch, string Text, long QueuedAt)?>? next = Next(number);
         while (next is not null)
         {
             var result = await next;
@@ -174,7 +190,13 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
             // Hazırlanırken yeni altyazı geldiyse bu eski cümle atlanır; ses ekrandaki satırın gerisinde kalmasın.
             bool stale;
             lock (gate) stale = !ready.Preview && ready.Batch != batch;
-            if (stale) continue;
+            if (stale)
+            {
+                Log?.Invoke("dublaj-atlandi", Environment.TickCount64 - ready.QueuedAt, ready.Text);
+                continue;
+            }
+            if (!ready.Preview)
+                Log?.Invoke("dublaj-caliyor", Environment.TickCount64 - ready.QueuedAt, $"{ready.Audio.Duration:F1} sn ses | {ready.Text}");
             await PlayAsync(ready.Audio, ready.Preview ? DubbingOutput.Computer : Output);
             if (number != Generation) return;
         }
@@ -187,11 +209,12 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
         await RunAsync(number);
     }
 
-    private Task<(SpeechAudio, bool, int)?>? Next(int number)
+    private Task<(SpeechAudio, bool, int, string, long)?>? Next(int number)
     {
         SpokenLine line;
         DubbingVoice? preview;
         int lineBatch;
+        long lineBatchAt;
         var backgrounds = new List<SpokenLine>();
         lock (gate)
         {
@@ -199,6 +222,7 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
             if (queue.Count == 0 || number != generation) return null;
             (line, preview) = queue.Dequeue();
             lineBatch = batch;
+            lineBatchAt = batchAt;
             if (preview is null)
             {
                 // Arka plan replikleri sıra beklemez, ana repliğin üstüne kısık sesle karışır. Sıradaki ilk replik arka
@@ -244,10 +268,12 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
         // Tek başına kalan arka plan repliği de kısık çalınır.
         var alone = preview is null && line.Background && extra.Count == 0;
         var engine = Synthesizer();
-        return Task.Run<(SpeechAudio, bool, int)?>(async () =>
+        var logText = line.Turkish + (extra.Count > 0 ? $"  (+{extra.Count} arka plan)" : "");
+        return Task.Run<(SpeechAudio, bool, int, string, long)?>(async () =>
         {
             try
             {
+                var clock = System.Diagnostics.Stopwatch.StartNew();
                 var main = engine.SynthesizeAsync(text, url);
                 var others = extra.Select(async item =>
                 {
@@ -259,7 +285,8 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
                 foreach (var background in await Task.WhenAll(others))
                     if (background is not null) audio = audio.MixedWith(background);
                 if (alone) audio = audio.Scaled(0.6f);
-                return (audio, preview is not null, lineBatch);
+                if (preview is null) Log?.Invoke("dublaj-hazirlandi", clock.ElapsedMilliseconds, $"{audio.Duration:F1} sn ses | {logText}");
+                return (audio, preview is not null, lineBatch, logText, lineBatchAt);
             }
             // Motor ne olursa olsun (pocket-tts, Windows sesi) bir cümlenin hatası dublajı durdurmaz.
             catch (Exception error)

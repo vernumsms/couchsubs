@@ -2,7 +2,13 @@ CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Ori
 
 **İndir:** [Windows (kurulum)](https://github.com/vernumsms/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)
 
-**Bu sürümde yeni (claude.9): doğru konuşmacı adı**
+**Bu sürümde yeni (claude.10): dublaj kapalıyken de temiz altyazı**
+
+- **Arayüz yazıları dublaj kapalıyken de gizlenir.** "SIRT ÇANTASI", "ENVANTER", "SIFIRLA SEKMESİ" gibi yazılar yalnız dublaj açıkken ayıklanıyordu; artık her zaman ayıklanıyor.
+- **Claude'un açıklamaları altyazıda çıkmaz.** Okunamayan satırda "I can't make out this line…" gibi açıklama yazılıyordu; artık satır boş kalıyor.
+- **Dublaj zamanlaması kayda yazılır** (dublaj-sira, dublaj-hazirlandi, dublaj-caliyor): dublaj gecikmesinin nerede oluştuğu ölçülebiliyor.
+
+**claude.9'da gelenler: doğru konuşmacı adı**
 
 - **Hitap konuşmacı adı sanılmaz.** "Valeria Luca. They're still on us" satırında konuşan Valeria'dır, "Luca." hitaptır; eskiden ad "Valeria Luca" sanılıyor, sonraki replikler de "Valeria Luca:" diye yazılıyor ve ayrı bir ses alıyordu.
 

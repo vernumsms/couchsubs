@@ -1249,6 +1249,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         {
             Cast = settings.Dubbing.Cast.Copy(),
             Output = settings.Dubbing.Output,
+            Log = services.WriteDiagnostic,
         };
         made.CastChanged += cast => Settings = settings with { Dubbing = settings.Dubbing with { Cast = cast } };
         made.Failed += message => DubbingError = message;

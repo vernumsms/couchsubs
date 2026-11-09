@@ -9,6 +9,17 @@ namespace CouchSubs.Translation.Tests;
 
 public class ClaudeTranslatorTests
 {
+    /// <summary>Düz satırlı test yanıtını yapılandırılmış (JSON) yanıta çevirir; zaten JSON ise dokunmaz.</summary>
+    private static string AsJson(string plain) =>
+        plain.TrimStart().StartsWith('{') ? plain
+        : System.Text.Json.JsonSerializer.Serialize(new
+        {
+            lines = plain.ReplaceLineEndings("\n").Split('\n').Select(line => new
+            {
+                speaker = "", text = line, spoken = "", emotion = "neutral", gender = "unknown", dialogue = true, background = false,
+            }),
+        });
+
     private sealed class FakeClaude(Func<string, string> reply) : IClaudeCompletion
     {
         public List<(string System, string User)> Requests { get; } = [];
@@ -24,7 +35,7 @@ public class ClaudeTranslatorTests
         public Task<string> CompleteJsonAsync(string system, string user, string schema, CancellationToken cancellationToken)
         {
             lock (Requests) { Requests.Add((system, user)); Schemas.Add(schema); }
-            return Task.FromResult(reply(user));
+            return Task.FromResult(AsJson(reply(user)));
         }
     }
 
@@ -72,7 +83,7 @@ public class ClaudeTranslatorTests
 
         Assert.Equal("yerel: We're gonna cali his bluff", result.Quick);
         Assert.Equal("Blöfünü göreceğiz.", await result.Refined);
-        Assert.Equal(ClaudeTranslator.SystemPrompt, claude.Requests[0].System);
+        Assert.StartsWith(ClaudeTranslator.SystemPrompt, claude.Requests[0].System);
         Assert.Equal("We're gonna cali his bluff", LastLine(claude.Requests[0].User.ReplaceLineEndings("\n")));
     }
 
@@ -87,7 +98,7 @@ public class ClaudeTranslatorTests
 
         var second = claude.Requests[1].User;
         Assert.Contains("EN: MOON: Stay close.", second);
-        Assert.Contains("TR: [tr] MOON: Stay close.", second);
+        Assert.Contains("[tr] MOON: Stay close.", second);
         Assert.Contains("Names: MOON", second);
         Assert.EndsWith("He's lying.", second);
     }
@@ -120,7 +131,8 @@ public class ClaudeTranslatorTests
         var second = await translator.TranslateProgressivelyAsync("Run!");
         Assert.Equal("yerel: Run!", second.Quick);
         Assert.Null(await second.Refined);
-        Assert.Equal(1, calls);
+        // Yapılandırılmış istek reddedilince düz istek de denenir; ikisi de reddedilince Claude'a ara verilir.
+        Assert.Equal(2, calls);
         Assert.Equal("yerel: Run!", await translator.TranslateAsync("Run!"));
     }
 
@@ -169,11 +181,21 @@ public class ClaudeTranslatorTests
     }
 
     [Fact]
-    public async Task ReplyWithMergedLinesIsNotUsed()
+    public async Task ReplyWithMergedLinesIsJoinedIntoOneSentence()
     {
         var translator = new ClaudeTranslator(new FakeClaude(_ => "Kapıyı tut ve koş!"), new FakeLocal());
         var result = await translator.TranslateProgressivelyAsync(Lines("Hold the gate.", "Run!"));
-        Assert.Null(await result.Refined);
+        Assert.Equal("Kapıyı tut ve koş!", await result.Refined);
+    }
+
+    [Fact]
+    public async Task ExplanationInsteadOfTranslationIsNotShown()
+    {
+        var translator = new ClaudeTranslator(new FakeClaude(_ =>
+            "I can't make out this line reliably; the OCR text is too garbled, so I'm leaving it empty."), new FakeLocal());
+        var result = await translator.TranslateProgressivelyAsync("fie here sonlcwllt:re. ]");
+        Assert.True(string.IsNullOrEmpty(await result.Refined));
+        Assert.False(ClaudeTranslator.IsComment("Price: Buraya gel!"));
     }
 
     [Fact]
@@ -322,8 +344,8 @@ public class ClaudeTranslatorTests
             return string.Join("\n", lines.Select(line => "[tr] " + line));
         }
 
-        public Task<string> CompleteJsonAsync(string system, string user, string schema, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
+        public async Task<string> CompleteJsonAsync(string system, string user, string schema, CancellationToken cancellationToken) =>
+            AsJson(await CompleteAsync(system, user, cancellationToken));
     }
 
     /// Önceki blok hâlâ çevrilirken yenisi gelirse ortak satır yeniden istenmez; ilk isteğin sonucu beklenir.
