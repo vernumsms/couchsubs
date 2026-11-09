@@ -2,7 +2,14 @@ CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Ori
 
 **İndir:** [Windows (kurulum)](https://github.com/vernumsms/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)
 
-**Bu sürümde yeni (claude.2)**
+**Bu sürümde yeni (claude.3): akıllı Türkçe dublaj**
+
+- **Duyguyu Claude seçer.** Dublaj açıkken Claude her replik için sahneye ve önceki satırlara bakarak tonu belirler (mutlu, üzgün, kızgın, şaşkın, sakin, nötr); ses o tonda okunur. Önceden ton yalnız İngilizce metindeki anahtar sözcüklerden tahmin ediliyordu.
+- **Doğru ses, doğru karakter.** Claude konuşanın cinsiyetini addan ve bağlamdan tahmin eder; listede olmayan karakterlere ve etiketsiz satırlara uygun ses atanır.
+- **Seslendirmeye özel kısa metin.** Altyazı tam çeviri olarak kalır; ses ise aynı anlamı daha kısa, konuşma diliyle söyler, böylece oyunun gerisinde kalmaz. Sayılar yazıyla okunur.
+- Claude'un bu modelde yapılandırılmış yanıtı reddetmesi durumunda dublaj düz çeviriyle çalışmayı sürdürür.
+
+**claude.2'de gelenler**
 
 - **Alt alta satırlar oyundaki sırayla.** Oyunda alt alta duran ayrı cümleler, konuşmacılar ve seçenekler TV'de de ayrı satırlarda, yukarıdan aşağıya aynı sırayla gösterilir; yalnız alt satıra taşan cümle tek satırda birleşir. Claude satır sayısını ya da sırasını bozarsa o çeviri kullanılmaz. TV uygulaması 0.9.7 (CouchSubs çeviriyi başlatınca kendisi kurar).
 - **Claude çevirisinde dublaj konuşmacıları ayırır:** "MOON: …" ve "KRATOS: …" satırları her karakterin kendi sesiyle okunur.

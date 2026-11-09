@@ -22,8 +22,8 @@ public sealed class LiveServices : IAppServices
 
     public Task<OnlineKeyCheck> CheckOnlineKeyAsync(string key) => DeepLTranslator.CheckAsync(key);
 
-    public ITextTranslator? MakeAiTranslator(string key, string model, ITextTranslator? fallback) =>
-        new ClaudeTranslator(new AnthropicCompletion(key, model), fallback, AiLog);
+    public ITextTranslator? MakeAiTranslator(string key, string model, ITextTranslator? fallback, Func<bool> dubbing) =>
+        new ClaudeTranslator(new AnthropicCompletion(key, model), fallback, AiLog, dubbing);
 
     /// <summary>Yapay zekâ çevirisinin yerel günlüğü (kalite ve gecikmeyi incelemek için).</summary>
     private static readonly TranslationLog AiLog = new(Path.Combine(

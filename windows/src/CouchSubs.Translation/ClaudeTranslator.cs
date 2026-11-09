@@ -11,6 +11,9 @@ namespace CouchSubs.Translation;
 public interface IClaudeCompletion
 {
     Task<string> CompleteAsync(string system, string user, CancellationToken cancellationToken);
+
+    /// <summary>Yanıt verilen JSON şemasına uyar (yapılandırılmış çıktı); JSON metni döner.</summary>
+    Task<string> CompleteJsonAsync(string system, string user, string schema, CancellationToken cancellationToken);
 }
 
 /// <summary>Claude isteğinin kullanıcıya gösterilebilecek sonucu.</summary>
@@ -62,6 +65,30 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
         - This is fictional game dialogue: translate violent or crude language faithfully, in the same tone.
         """;
 
+    /// <summary>Dublaj açıkken sistem talimatına eklenir: her satırın seslendirilecek hali, tonu ve konuşanın cinsiyeti.</summary>
+    internal const string DubbingPrompt = """
+
+        Voice-over is on: a Turkish text-to-speech voice also reads your translation aloud over the game. Instead of
+        plain text, reply with JSON: one entry in "lines" per input line, in the same order.
+        - "text": the subtitle translation of that line, exactly as you would write it as a subtitle (keep a speaker
+          label if the line has one).
+        - "spoken": what the voice says: the same meaning in natural spoken Turkish, without speaker labels, dashes,
+          button names or symbols. Make it as short as the meaning allows so the voice keeps up with the game
+          (shorter than the subtitle when possible, never adding anything). Write numbers as words.
+        - "emotion": how the line is delivered, judged from the words, the earlier lines and the situation: "neutral",
+          "happy", "sad", "angry", "surprised" or "calm".
+        - "gender": the speaker's gender when the name, the context or the way they are addressed makes it clear:
+          "female" or "male"; otherwise "unknown".
+        """;
+
+    internal const string DubbingSchema = """
+        {"type":"object","additionalProperties":false,"required":["lines"],"properties":{"lines":{"type":"array","items":{
+        "type":"object","additionalProperties":false,"required":["text","spoken","emotion","gender"],"properties":{
+        "text":{"type":"string"},"spoken":{"type":"string"},
+        "emotion":{"type":"string","enum":["neutral","happy","sad","angry","surprised","calm"]},
+        "gender":{"type":"string","enum":["female","male","unknown"]}}}}}}
+        """;
+
     private readonly IClaudeCompletion _claude;
     private readonly ITextTranslator? _fallback;
     private readonly ConcurrentDictionary<string, string> _cache = new(StringComparer.Ordinal);
@@ -72,12 +99,17 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
     private DateTimeOffset _pausedUntil = DateTimeOffset.MinValue;
 
     private readonly TranslationLog? _log;
+    /// <summary>Dublaj açık mı (her istekte bakılır; ayar oyun sırasında değişebilir).</summary>
+    private readonly Func<bool> _dubbing;
+    /// <summary>Yapılandırılmış (JSON) istek reddedildi; bu oturumda dublaj düz çeviriyle sürer.</summary>
+    private volatile bool _jsonUnavailable;
 
-    public ClaudeTranslator(IClaudeCompletion claude, ITextTranslator? fallback, TranslationLog? log = null)
+    public ClaudeTranslator(IClaudeCompletion claude, ITextTranslator? fallback, TranslationLog? log = null, Func<bool>? dubbing = null)
     {
         _claude = claude;
         _fallback = fallback;
         _log = log;
+        _dubbing = dubbing ?? (() => false);
     }
 
     /// <summary>Son Claude hatası; çeviri düzgün gidiyorsa null.</summary>
@@ -130,23 +162,53 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(RequestTimeout);
         var clock = System.Diagnostics.Stopwatch.StartNew();
+        var dubbing = _dubbing() && !_jsonUnavailable;
         try
         {
-            var reply = await _claude.CompleteAsync(SystemPrompt, UserMessage(source), timeout.Token).ConfigureAwait(false);
-            var translated = Clean(reply);
-            if (translated.Length == 0) return null;
-            // Satır birleştirildiyse ya da bölündüyse sıra güvenilmez; cihaz üstü çeviri (satırları korur) kalır.
-            if (translated.Split('\n').Length != expectedLines)
+            string translated = "";
+            IReadOnlyList<SpokenLine> speech = [];
+            if (dubbing)
             {
-                _log?.Write("satir-sayisi-tutmadi", clock.ElapsedMilliseconds, source, translated);
-                return null;
+                try
+                {
+                    var json = await _claude.CompleteJsonAsync(SystemPrompt + DubbingPrompt, UserMessage(source), DubbingSchema, timeout.Token)
+                        .ConfigureAwait(false);
+                    if (ParseDubbing(source, json) is not { } parsed)
+                    {
+                        _log?.Write("dublaj-yaniti-uymadi", clock.ElapsedMilliseconds, source, json);
+                        return null;
+                    }
+                    (translated, speech) = parsed;
+                }
+                // İstek reddedildiyse (ör. bu model yapılandırılmış çıktıyı desteklemiyor) oturum boyunca düz çeviriye
+                // geçilir: dublaj yine çalışır, ton ve cinsiyet eski yolla tahmin edilir. Anahtar gerçekten geçersizse
+                // düz istek de reddedilir ve aşağıdaki genel hata yolu işler.
+                catch (ClaudeException error) when (error.State == OnlineKeyState.Invalid)
+                {
+                    _jsonUnavailable = true;
+                    _log?.Write("dublaj-json-reddedildi: " + error.Message, clock.ElapsedMilliseconds, source, null);
+                    dubbing = false;
+                }
             }
-            _log?.Write("claude", clock.ElapsedMilliseconds, source, translated);
+            if (!dubbing)
+            {
+                translated = Clean(await _claude.CompleteAsync(SystemPrompt, UserMessage(source), timeout.Token).ConfigureAwait(false));
+                if (translated.Length == 0) return null;
+                // Satır birleştirildiyse ya da bölündüyse sıra güvenilmez; cihaz üstü çeviri (satırları korur) kalır.
+                if (translated.Split('\n').Length != expectedLines)
+                {
+                    _log?.Write("satir-sayisi-tutmadi", clock.ElapsedMilliseconds, source, translated);
+                    return null;
+                }
+                speech = Speech(source, translated);
+            }
+            _log?.Write(dubbing ? "claude+dublaj" : "claude", clock.ElapsedMilliseconds, source,
+                dubbing ? translated + "  [ses: " + string.Join(" / ", speech.Select(l => $"{l.Emotion?.ToString() ?? "nötr"},{l.Gender?.ToString() ?? "?"}: {l.Turkish}")) + "]" : translated);
             LastError = null;
             if (_cache.Count >= CacheLimit) _cache.Clear();
             _cache[text] = translated;
             if (_speech.Count >= 512) _speech.Clear();
-            _speech[text] = Speech(source, translated);
+            _speech[text] = speech;
             lock (_historyGate)
             {
                 _history.Enqueue((text, translated));
@@ -193,6 +255,57 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
         return lines;
     }
 
+    /// <summary>
+    /// Dublaj yanıtı: altyazı metni ve her satırın seslendirilecek hali, tonu, konuşanın cinsiyeti. Satır sayısı
+    /// tutmuyorsa ya da JSON bozuksa null (cihaz üstü çeviri kalır).
+    /// </summary>
+    internal static (string Translated, IReadOnlyList<SpokenLine> Speech)? ParseDubbing(string source, string json)
+    {
+        var english = source.Split('\n');
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            var entries = document.RootElement.GetProperty("lines").EnumerateArray().ToList();
+            if (entries.Count != english.Length) return null;
+            var subtitles = new List<string>();
+            var speech = new List<SpokenLine>();
+            for (var i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                var text = Clean(entry.GetProperty("text").GetString() ?? "").ReplaceLineEndings(" ");
+                if (text.Length == 0) return null;
+                subtitles.Add(text);
+                var pieces = SubtitleSegmenter.Split(english[i]);
+                var speaker = pieces.Select(SubtitleSegmenter.LabelName).FirstOrDefault(name => name is { Length: > 0 });
+                var newTurn = pieces.Count > 0 && !pieces[0].Translate && "-–—".Contains(pieces[0].Text[0]);
+                var spoken = (entry.GetProperty("spoken").GetString() ?? "").Trim().TrimStart('-', '–', '—', ' ');
+                if (!spoken.Any(char.IsLetter)) continue;
+                var emotion = entry.GetProperty("emotion").GetString() switch
+                {
+                    "happy" => SpeechEmotion.Happy,
+                    "sad" => SpeechEmotion.Sad,
+                    "angry" => SpeechEmotion.Angry,
+                    "surprised" => SpeechEmotion.Surprised,
+                    "calm" => SpeechEmotion.Calm,
+                    _ => (SpeechEmotion?)null,
+                };
+                var gender = entry.GetProperty("gender").GetString() switch
+                {
+                    "female" => VoiceGender.Female,
+                    "male" => VoiceGender.Male,
+                    _ => (VoiceGender?)null,
+                };
+                var said = string.Join(' ', pieces.Where(piece => piece.Translate).Select(piece => piece.Text));
+                speech.Add(new SpokenLine(said, spoken, speaker, newTurn, emotion, gender));
+            }
+            return (string.Join('\n', subtitles), speech);
+        }
+        catch (Exception error) when (error is System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Önceki satırlar (bağlam), bilinen isimler ve çevrilecek metin.</summary>
     internal string UserMessage(string text)
     {
@@ -229,7 +342,7 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
     /// <summary>Yanıttaki tırnakları ve boşlukları temizler.</summary>
     internal static string Clean(string reply)
     {
-        var text = string.Join('\n', reply.Replace("\n", "\n").Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0));
+        var text = string.Join('\n', reply.Replace("\r\n", "\n").Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0));
         if (text.Length >= 2 && (text[0], text[^1]) is ('"', '"') or ('“', '”') or ('«', '»')) text = text[1..^1].Trim();
         return text;
     }

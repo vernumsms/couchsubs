@@ -860,7 +860,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         var local = MakeLocalTranslator();
         // Yapay zekâ çevirisi DeepL'den önce gelir: cihaz üstü çeviri hemen gösterilir, Claude'un Türkçesi ardından.
         if (AiTranslationActive && store.Load<string>(StoreKeys.ClaudeKey) is { } aiKey &&
-            services.MakeAiTranslator(aiKey, settings.AiModel, local is UnavailableTranslator ? null : local) is { } ai)
+            services.MakeAiTranslator(aiKey, settings.AiModel, local is UnavailableTranslator ? null : local,
+                () => settings.Dubbing.Enabled) is { } ai)
             return ai;
         if (OnlineTranslationActive && store.Load<string>(StoreKeys.DeepLKey) is { } key &&
             services.MakeOnlineTranslator(key, local is UnavailableTranslator ? null : local) is { } online)

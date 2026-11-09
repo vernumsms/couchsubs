@@ -69,6 +69,27 @@ public class VoiceCastTests
         Assert.Equal(second, cast.VoiceFor(new SpokenLine("", ""), out _));
     }
 
+    /// Ad listesinde olmayan karaktere yapay zekânın bağlamdan tahmin ettiği cinsiyette ses verilir.
+    [Fact]
+    public void UnknownNameGetsVoiceOfGuessedGender()
+    {
+        var cast = new VoiceCast();
+        var voice = cast.VoiceFor(new SpokenLine("", "", "ZORVAKKA", Gender: VoiceGender.Female), out _);
+        Assert.Equal(VoiceGender.Female, voice.Gender());
+    }
+
+    /// Etiketsiz satırda konuşanın cinsiyeti biliniyorsa anlatıcı sesi yerine ona uyan ses okunur.
+    [Fact]
+    public void UnlabeledLineFollowsGuessedGender()
+    {
+        var cast = new VoiceCast();
+        Assert.Equal(VoiceGender.Male, cast.Narrator.Gender());
+        var voice = cast.VoiceFor(new SpokenLine("", "", Gender: VoiceGender.Female), out var assigned);
+        Assert.Equal(cast.Partner, voice);
+        Assert.False(assigned);
+        Assert.Equal(cast.Narrator, cast.VoiceFor(new SpokenLine("", ""), out _));
+    }
+
     [Fact]
     public void ManualChoiceIsSaved()
     {

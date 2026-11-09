@@ -161,7 +161,7 @@ public interface IAppServices
     ITextTranslator? MakeOnlineTranslator(string key, ITextTranslator? fallback) => null;
     Task<OnlineKeyCheck> CheckOnlineKeyAsync(string key) => Task.FromResult(new OnlineKeyCheck(OnlineKeyState.Unreachable));
     /// <summary>Claude çevirmeni (iki aşamalı); <paramref name="fallback"/> hemen gösterilen cihaz üstü çeviri. Bu derlemede yoksa null.</summary>
-    ITextTranslator? MakeAiTranslator(string key, string model, ITextTranslator? fallback) => null;
+    ITextTranslator? MakeAiTranslator(string key, string model, ITextTranslator? fallback, Func<bool> dubbing) => null;
     Task<OnlineKeyCheck> CheckAiKeyAsync(string key, string model) => Task.FromResult(new OnlineKeyCheck(OnlineKeyState.Unreachable));
     /// <summary>Türkçe dublaj modeli; bu derlemede yoksa null.</summary>
     IDubbingModel? Dubbing => null;

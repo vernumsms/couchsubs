@@ -212,7 +212,8 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
             }
             if (copy is not null) post(() => CastChanged?.Invoke(copy));
         }
-        var text = SpeechText.Prepare(line.Turkish, SpeechEmotions.Guess(line.English));
+        // Yapay zekâ sahneye göre bir ton seçtiyse o, seçmediyse İngilizce metinden tahmin.
+        var text = SpeechText.Prepare(line.Turkish, line.Emotion ?? SpeechEmotions.Guess(line.English));
         var url = new Uri($"http://127.0.0.1:{serverPort()}/voices/{voice.FileName()}.wav");
         var engine = Synthesizer();
         return Task.Run<(SpeechAudio, bool)?>(async () =>

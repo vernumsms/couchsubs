@@ -31,7 +31,13 @@ public sealed class AnthropicCompletion : IClaudeCompletion
         Timeout = TimeSpan.FromSeconds(8),
     };
 
-    public async Task<string> CompleteAsync(string system, string user, CancellationToken cancellationToken)
+    public Task<string> CompleteAsync(string system, string user, CancellationToken cancellationToken) =>
+        SendAsync(system, user, null, cancellationToken);
+
+    public Task<string> CompleteJsonAsync(string system, string user, string schema, CancellationToken cancellationToken) =>
+        SendAsync(system, user, schema, cancellationToken);
+
+    private async Task<string> SendAsync(string system, string user, string? schema, CancellationToken cancellationToken)
     {
         Message response;
         try
@@ -44,7 +50,12 @@ public sealed class AnthropicCompletion : IClaudeCompletion
                 System = system,
                 // Altyazı çevirisi basit ve gecikmeye duyarlı: düşük efor. Haiku'da düşünme kapatılır (daha hızlı ve
                 // ucuz; Haiku 5.5 buna düşük eforda izin verir). Opus 5.5'te düşünme kapatılamaz, düşük eforla sınırlanır.
-                OutputConfig = new OutputConfig { Effort = Effort.Low },
+                // Dublajda yanıt verilen şemaya uyan JSON'dur (yapılandırılmış çıktı).
+                OutputConfig = new OutputConfig
+                {
+                    Effort = Effort.Low,
+                    Format = schema is null ? null : new JsonOutputFormat { Schema = SchemaOf(schema) },
+                },
                 Thinking = _model == FastModel ? new ThinkingConfigDisabled() : null,
                 Messages = [new UserMessageParam { Content = user }],
             }, cancellationToken).ConfigureAwait(false);
@@ -56,6 +67,13 @@ public sealed class AnthropicCompletion : IClaudeCompletion
 
         if (response.StopReason == "refusal") throw new ClaudeException(OnlineKeyState.Unreachable, ClaudeException.Refusal);
         return string.Concat(response.Content.Select(block => block.Value).OfType<TextBlock>().Select(text => text.Text));
+    }
+
+    /// <summary>JSON şema metni → SDK'nın beklediği sözlük.</summary>
+    private static Dictionary<string, System.Text.Json.JsonElement> SchemaOf(string schema)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(schema);
+        return document.RootElement.EnumerateObject().ToDictionary(property => property.Name, property => property.Value.Clone());
     }
 
     /// <summary>Ayarlardaki "Kaydet ve dene": anahtar geçerli mi, seçilen model kullanılabiliyor mu.</summary>

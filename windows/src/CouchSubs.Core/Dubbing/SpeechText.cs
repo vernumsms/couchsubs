@@ -9,7 +9,10 @@ namespace CouchSubs.Core.Dubbing;
 /// <summary>Dublajda seslendirilecek bir cümle (Mac: CouchSubsCore/Dubbing/SpeechScript.swift).</summary>
 /// <param name="Speaker">Altyazıdaki konuşmacı etiketi ("KRATOS: " → "KRATOS"); etiket yoksa null.</param>
 /// <param name="NewTurn">Diyalog tiresiyle başlayan yeni konuşma: etiketsiz satırlarda konuşan değişti demektir.</param>
-public sealed record SpokenLine(string English, string Turkish, string? Speaker = null, bool NewTurn = false);
+/// <param name="Emotion">Yapay zekânın sahneye bakarak seçtiği ton; null ise İngilizce metinden tahmin edilir.</param>
+/// <param name="Gender">Yapay zekânın tahmin ettiği konuşmacı cinsiyeti; ses seçiminde kullanılır.</param>
+public sealed record SpokenLine(string English, string Turkish, string? Speaker = null, bool NewTurn = false,
+    SpeechEmotion? Emotion = null, VoiceGender? Gender = null);
 
 /// <summary>Pocket TTS Turkish'in duygu etiketleri; etiketsiz cümle düz okunur.</summary>
 public enum SpeechEmotion { Happy, Sad, Angry, Surprised, Calm }

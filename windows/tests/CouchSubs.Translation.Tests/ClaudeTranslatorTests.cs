@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 using CouchSubs.Core;
+using CouchSubs.Core.Dubbing;
 using CouchSubs.Translation;
 using Xunit;
 
@@ -17,6 +18,41 @@ public class ClaudeTranslatorTests
             lock (Requests) Requests.Add((system, user));
             return Task.FromResult(reply(user));
         }
+
+        public List<string> Schemas { get; } = [];
+
+        public Task<string> CompleteJsonAsync(string system, string user, string schema, CancellationToken cancellationToken)
+        {
+            lock (Requests) { Requests.Add((system, user)); Schemas.Add(schema); }
+            return Task.FromResult(reply(user));
+        }
+    }
+
+    /// <summary>Yapılandırılmış (JSON) isteği reddeden, düz isteği yanıtlayan Claude.</summary>
+    private sealed class NoJsonClaude(string reply) : IClaudeCompletion
+    {
+        public int JsonCalls { get; private set; }
+
+        public Task<string> CompleteAsync(string system, string user, CancellationToken cancellationToken) => Task.FromResult(reply);
+
+        public Task<string> CompleteJsonAsync(string system, string user, string schema, CancellationToken cancellationToken)
+        {
+            JsonCalls++;
+            throw new ClaudeException(OnlineKeyState.Invalid, "output_config.format is not supported");
+        }
+    }
+
+    [Fact]
+    public async Task RejectedJsonRequestFallsBackToPlainTranslation()
+    {
+        var claude = new NoJsonClaude("Koş!");
+        var translator = new ClaudeTranslator(claude, new FakeLocal(), dubbing: () => true);
+
+        Assert.Equal("Koş!", await (await translator.TranslateProgressivelyAsync("Run!")).Refined);
+        // Sonraki satırlarda JSON yeniden denenmez; düz çeviri sürer.
+        Assert.Equal("Koş!", await (await translator.TranslateProgressivelyAsync("Stop!")).Refined);
+        Assert.Equal(1, claude.JsonCalls);
+        Assert.Equal("Koş!", translator.SpokenLines("Run!")[0].Turkish);
     }
 
     private sealed class FakeLocal : ITextTranslator
@@ -152,6 +188,47 @@ public class ClaudeTranslatorTests
         Assert.Equal(2, lines.Count);
         Assert.Equal(("MOON", "Yakın dur.", "Stay close."), (lines[0].Speaker, lines[0].Turkish, lines[0].English));
         Assert.Equal(("KRATOS", "Gidiyoruz."), (lines[1].Speaker, lines[1].Turkish));
+    }
+
+    [Fact]
+    public async Task DubbingAsksForSpokenTextToneAndGender()
+    {
+        const string json = """
+            {"lines":[
+              {"text":"MOON: Blöfünü göreceğiz.","spoken":"Blöfünü göreceğiz.","emotion":"angry","gender":"female"},
+              {"text":"Peki ya yanılıyorsan?","spoken":"Ya yanılıyorsan?","emotion":"surprised","gender":"unknown"}
+            ]}
+            """;
+        var claude = new FakeClaude(_ => json);
+        var translator = new ClaudeTranslator(claude, new FakeLocal(), dubbing: () => true);
+        var source = Lines("MOON: We're gonna call his bluff.", "And if you're wrong?");
+
+        var result = await translator.TranslateProgressivelyAsync(source);
+
+        Assert.Equal(Lines("MOON: Blöfünü göreceğiz.", "Peki ya yanılıyorsan?"), await result.Refined);
+        Assert.Contains("Voice-over is on", claude.Requests[0].System);
+        Assert.Equal(ClaudeTranslator.DubbingSchema, claude.Schemas[0]);
+        var lines = translator.SpokenLines(source);
+        Assert.Equal(2, lines.Count);
+        Assert.Equal(("MOON", "Blöfünü göreceğiz.", (SpeechEmotion?)SpeechEmotion.Angry, (VoiceGender?)VoiceGender.Female),
+            (lines[0].Speaker, lines[0].Turkish, lines[0].Emotion, lines[0].Gender));
+        Assert.Equal(("Ya yanılıyorsan?", (SpeechEmotion?)SpeechEmotion.Surprised, (VoiceGender?)null),
+            (lines[1].Turkish, lines[1].Emotion, lines[1].Gender));
+    }
+
+    [Fact]
+    public async Task DubbingReplyWithWrongLineCountIsNotUsed()
+    {
+        const string json = """{"lines":[{"text":"Kapıyı tut ve koş!","spoken":"Kapıyı tut ve koş!","emotion":"neutral","gender":"unknown"}]}""";
+        var translator = new ClaudeTranslator(new FakeClaude(_ => json), new FakeLocal(), dubbing: () => true);
+        Assert.Null(await (await translator.TranslateProgressivelyAsync(Lines("Hold the gate.", "Run!"))).Refined);
+    }
+
+    [Fact]
+    public void DubbingSchemaIsValidJson()
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(ClaudeTranslator.DubbingSchema);
+        Assert.Equal("object", document.RootElement.GetProperty("type").GetString());
     }
 
     [Theory]

@@ -54,13 +54,21 @@ public sealed class VoiceCast
             _lastWasPartner = false;
             var key = Key(speaker);
             if (Assignments.TryGetValue(key, out var known)) return known;
-            var voice = Pick(NameGender.Guess(speaker));
+            // Ad listesinde yoksa yapay zekânın bağlamdan tahmin ettiği cinsiyet.
+            var voice = Pick(NameGender.Guess(speaker) ?? line.Gender);
             Assignments[key] = voice;
             assigned = true;
             return voice;
         }
         if (line.NewTurn) _lastWasPartner = !_lastWasPartner;
-        return _lastWasPartner ? Partner : Narrator;
+        var turn = _lastWasPartner ? Partner : Narrator;
+        // Etiketsiz satırda konuşanın cinsiyeti biliniyorsa ona uyan ses: önce sıradaki, sonra diğeri, sonra herhangi biri.
+        if (line.Gender is { } gender && turn.Gender() != gender)
+        {
+            var other = _lastWasPartner ? Narrator : Partner;
+            return other.Gender() == gender ? other : DubbingVoices.All.First(voice => voice.Gender() == gender);
+        }
+        return turn;
     }
 
     public void Assign(DubbingVoice voice, string name) => Assignments[Key(name)] = voice;
