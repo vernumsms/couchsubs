@@ -4320,6 +4320,230 @@
           }
         }
       }
+    },
+    "AI translation (Claude)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI translation (Claude)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yapay zekâ çevirisi (Claude)"
+          }
+        }
+      }
+    },
+    "Optional. The translation model on this computer shows each line at once; a moment later Claude replaces it with natural Turkish that understands idioms and context. Subtitle text is sent to Anthropic and billed to your own key; when Claude cannot be reached, the translation on this computer stays.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional. The translation model on this computer shows each line at once; a moment later Claude replaces it with natural Turkish that understands idioms and context. Subtitle text is sent to Anthropic and billed to your own key; when Claude cannot be reached, the translation on this computer stays."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İsteğe bağlı. Bilgisayardaki çeviri modeli her satırı hemen gösterir; bir an sonra Claude onu deyimleri ve bağlamı anlayan doğal bir Türkçeyle değiştirir. Altyazı metni Anthropic'e gönderilir ve kendi anahtarınızdan ücretlendirilir; Claude'a ulaşılamazsa bilgisayardaki çeviri kalır."
+          }
+        }
+      }
+    },
+    "Model": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model"
+          }
+        }
+      }
+    },
+    "Claude Opus 5.5 (best quality)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Opus 5.5 (best quality)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Opus 5.5 (en iyi kalite)"
+          }
+        }
+      }
+    },
+    "Claude Haiku 5.5 (faster, much lower cost)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Haiku 5.5 (faster, much lower cost)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Haiku 5.5 (daha hızlı, çok daha ucuz)"
+          }
+        }
+      }
+    },
+    "Get an Anthropic API key": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get an Anthropic API key"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anthropic API anahtarı alın"
+          }
+        }
+      }
+    },
+    "Translate with Claude": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translate with Claude"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude ile çevir"
+          }
+        }
+      }
+    },
+    "Instant subtitles": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instant subtitles"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anlık altyazı"
+          }
+        }
+      }
+    },
+    "Follow the game line by line": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow the game line by line"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oyunu satır satır takip et"
+          }
+        }
+      }
+    },
+    "Only the line that is on the game screen right now is shown. When a new line appears the previous one disappears at once, even if you have not finished reading it, so fast scenes never get mixed up. Turn it off to keep each line on the TV long enough to read.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only the line that is on the game screen right now is shown. When a new line appears the previous one disappears at once, even if you have not finished reading it, so fast scenes never get mixed up. Turn it off to keep each line on the TV long enough to read."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yalnız oyun ekranında o an duran satır gösterilir. Yeni satır gelince, okumayı bitirmemiş olsanız da önceki hemen kalkar; hızlı sahnelerde altyazılar birbirine karışmaz. Her satırın okunacak kadar TV'de kalmasını istiyorsanız kapatın."
+          }
+        }
+      }
+    },
+    "Key works. Lines are now refined by Claude.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Key works. Lines are now refined by Claude."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anahtar çalışıyor. Satırlar artık Claude ile iyileştiriliyor."
+          }
+        }
+      }
+    },
+    "Your Anthropic account has no credit left. Until you add credit, the translation model on this computer translates.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Anthropic account has no credit left. Until you add credit, the translation model on this computer translates."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anthropic hesabınızda kredi kalmadı. Kredi ekleyene kadar bilgisayardaki çeviri modeli çevirir."
+          }
+        }
+      }
+    },
+    "Anthropic did not accept this key. Copy it again from console.anthropic.com.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anthropic did not accept this key. Copy it again from console.anthropic.com."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anthropic bu anahtarı kabul etmedi. console.anthropic.com'dan yeniden kopyalayın."
+          }
+        }
+      }
+    },
+    "Anthropic could not be reached. Check your internet connection.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anthropic could not be reached. Check your internet connection."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anthropic'e ulaşılamadı. İnternet bağlantınızı kontrol edin."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

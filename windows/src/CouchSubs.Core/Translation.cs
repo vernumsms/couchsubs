@@ -13,6 +13,23 @@ public interface ITextTranslator
     IReadOnlyList<SpokenLine> SpokenLines(string text) => [];
 }
 
+/// <summary>
+/// İki aşamalı çevirmen: önce hemen gösterilecek hızlı bir çeviri (cihaz üstü model), ardından daha iyi bir
+/// çeviri (yapay zekâ). Pipeline hızlı çeviriyi gösterir; daha iyisi gelince satır hâlâ en son gösterilen satırsa
+/// TV'deki yazıyı onunla değiştirir.
+/// </summary>
+public interface IProgressiveTranslator : ITextTranslator
+{
+    Task<ProgressiveTranslation> TranslateProgressivelyAsync(string text, CancellationToken cancellationToken = default);
+}
+
+/// <param name="Quick">Hemen gösterilecek çeviri.</param>
+/// <param name="Refined">Daha iyi çeviri; iyileştirme yoksa ya da başarısız olduysa null döner. Hiçbir zaman hata fırlatmaz.</param>
+public sealed record ProgressiveTranslation(string Quick, Task<string?> Refined)
+{
+    public static ProgressiveTranslation Final(string text) => new(text, Task.FromResult<string?>(null));
+}
+
 public enum TranslatorStatus
 {
     Ready,

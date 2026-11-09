@@ -48,8 +48,67 @@ public partial class SettingsWindow : Window
         Dubbing.Attach(controller);
         ShowDeepL();
         if (controller.HasDeepLKey) _ = ShowDeepLUsageAsync();
+        ShowAi();
+        AiModel.SelectedItem = AiModel.Items.Cast<ComboBoxItem>().FirstOrDefault(item => (string)item.Tag == settings.AiModel)
+                               ?? AiModel.Items[0];
+        InstantOn.IsChecked = settings.InstantSubtitles;
         loading = false;
     }
+
+    private void ShowAi()
+    {
+        var saved = controller.HasAiKey;
+        AiNewKey.Visibility = saved ? Visibility.Collapsed : Visibility.Visible;
+        AiSaved.Visibility = saved ? Visibility.Visible : Visibility.Collapsed;
+        var wasLoading = loading;
+        loading = true;
+        AiOn.IsChecked = controller.Settings.AiTranslation;
+        loading = wasLoading;
+    }
+
+    private void ShowAiStatus(OnlineKeyCheck check)
+    {
+        AiStatus.Visibility = Visibility.Visible;
+        AiStatus.Text = check.State switch
+        {
+            OnlineKeyState.Valid => Localizer.Current["Key works. Lines are now refined by Claude."],
+            OnlineKeyState.QuotaExceeded => Localizer.Current["Your Anthropic account has no credit left. Until you add credit, the translation model on this computer translates."],
+            OnlineKeyState.Invalid => Localizer.Current["Anthropic did not accept this key. Copy it again from console.anthropic.com."],
+            _ => Localizer.Current["Anthropic could not be reached. Check your internet connection."],
+        };
+    }
+
+    private async void OnAiSave(object sender, RoutedEventArgs e)
+    {
+        AiSave.IsEnabled = false;
+        try
+        {
+            var check = await controller.SetAiKeyAsync(AiKey.Password);
+            ShowAiStatus(check);
+            if (controller.HasAiKey) AiKey.Clear();
+            ShowAi();
+        }
+        finally
+        {
+            AiSave.IsEnabled = true;
+        }
+    }
+
+    private void OnAiToggle(object sender, RoutedEventArgs e) => Update(s => s with { AiTranslation = AiOn.IsChecked == true });
+
+    private void OnAiModel(object sender, SelectionChangedEventArgs e)
+    {
+        if (AiModel.SelectedItem is ComboBoxItem { Tag: string model }) Update(s => s with { AiModel = model });
+    }
+
+    private void OnAiRemove(object sender, RoutedEventArgs e)
+    {
+        controller.RemoveAiKey();
+        AiStatus.Visibility = Visibility.Collapsed;
+        ShowAi();
+    }
+
+    private void OnInstantToggle(object sender, RoutedEventArgs e) => Update(s => s with { InstantSubtitles = InstantOn.IsChecked == true });
 
     private void ShowDeepL()
     {

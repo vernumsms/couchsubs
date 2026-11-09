@@ -189,7 +189,7 @@ jobs:
           Copy-Item LICENSE, THIRD-PARTY-NOTICES.md pack/
           dotnet tool install -g vpk --version 1.2.161
           if ($env:GITHUB_REF_TYPE -eq "tag") {
-            vpk download github --repoUrl https://github.com/yorulmazsinan/couchsubs -o Releases
+            vpk download github --repoUrl https://github.com/vernumsms/couchsubs -o Releases
             if ($LASTEXITCODE -ne 0) { Write-Host "Önceki Velopack sürümü yok; yalnız tam paket üretilecek." }
           }
           vpk pack --packId CouchSubsApp --packVersion $version --packDir pack --mainExe CouchSubs.exe `

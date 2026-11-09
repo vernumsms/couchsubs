@@ -86,6 +86,44 @@
                     </StackPanel>
                 </c:Card>
 
+                <c:Card Title="{t:T 'AI translation (Claude)'}" Margin="0,16,0,0">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
+                                   Text="{t:T 'Optional. The translation model on this computer shows each line at once; a moment later Claude replaces it with natural Turkish that understands idioms and context. Subtitle text is sent to Anthropic and billed to your own key; when Claude cannot be reached, the translation on this computer stays.'}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <TextBlock Text="{t:T 'Model'}" VerticalAlignment="Center" Margin="0,0,16,0" />
+                            <ComboBox x:Name="AiModel" SelectionChanged="OnAiModel">
+                                <ComboBoxItem Tag="claude-opus-5-5" Content="{t:T 'Claude Opus 5.5 (best quality)'}" />
+                                <ComboBoxItem Tag="claude-haiku-5-5" Content="{t:T 'Claude Haiku 5.5 (faster, much lower cost)'}" />
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel x:Name="AiNewKey">
+                            <StackPanel Orientation="Horizontal">
+                                <PasswordBox x:Name="AiKey" Width="320" VerticalContentAlignment="Center" />
+                                <Button x:Name="AiSave" Content="{t:T 'Save and test'}" Margin="12,0,0,0" Click="OnAiSave" />
+                            </StackPanel>
+                            <TextBlock Margin="0,8,0,0">
+                                <Hyperlink NavigateUri="https://console.anthropic.com/settings/keys" RequestNavigate="OnLink"><Run Text="{t:T 'Get an Anthropic API key'}" /></Hyperlink>
+                            </TextBlock>
+                        </StackPanel>
+                        <StackPanel x:Name="AiSaved">
+                            <CheckBox x:Name="AiOn" Content="{t:T 'Translate with Claude'}" Foreground="{DynamicResource textPrimaryBrush}"
+                                      Checked="OnAiToggle" Unchecked="OnAiToggle" />
+                            <Button Content="{t:T 'Remove key'}" HorizontalAlignment="Left" Margin="0,12,0,0" Click="OnAiRemove" />
+                        </StackPanel>
+                        <TextBlock x:Name="AiStatus" Style="{StaticResource HintText}" Margin="0,8,0,0" Visibility="Collapsed" />
+                    </StackPanel>
+                </c:Card>
+
+                <c:Card Title="{t:T 'Instant subtitles'}" Margin="0,16,0,0">
+                    <StackPanel>
+                        <CheckBox x:Name="InstantOn" Content="{t:T 'Follow the game line by line'}" Foreground="{DynamicResource textPrimaryBrush}"
+                                  Checked="OnInstantToggle" Unchecked="OnInstantToggle" />
+                        <TextBlock Style="{StaticResource HintText}" Margin="0,8,0,0"
+                                   Text="{t:T 'Only the line that is on the game screen right now is shown. When a new line appears the previous one disappears at once, even if you have not finished reading it, so fast scenes never get mixed up. Turn it off to keep each line on the TV long enough to read.'}" />
+                    </StackPanel>
+                </c:Card>
+
                 <c:Card Title="{t:T 'Online translation (DeepL)'}" Margin="0,16,0,0">
                     <StackPanel>
                         <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"

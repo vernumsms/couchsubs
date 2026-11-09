@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <!-- CPU paketi win-x64, win-arm64, osx-arm64 ve linux yerel kitaplıklarını içerir. -->
+    <PackageReference Include="Anthropic" Version="13.6.0" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.31.1" />
     <PackageReference Include="Microsoft.ML.Tokenizers" Version="2.0.1" />
   </ItemGroup>

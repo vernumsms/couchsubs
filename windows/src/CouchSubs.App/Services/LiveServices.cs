@@ -21,6 +21,11 @@ public sealed class LiveServices : IAppServices
     public ITextTranslator? MakeOnlineTranslator(string key, ITextTranslator? fallback) => new DeepLTranslator(key, fallback);
 
     public Task<OnlineKeyCheck> CheckOnlineKeyAsync(string key) => DeepLTranslator.CheckAsync(key);
+
+    public ITextTranslator? MakeAiTranslator(string key, string model, ITextTranslator? fallback) =>
+        new ClaudeTranslator(new AnthropicCompletion(key, model), fallback);
+
+    public Task<OnlineKeyCheck> CheckAiKeyAsync(string key, string model) => AnthropicCompletion.CheckAsync(key, model);
     public IDubbingModel? Dubbing { get; } = PocketDubbingModel.EngineBundled ? new PocketDubbingModel() : null;
     public IDubbingModel? FastDubbing { get; } = WindowsVoiceModel.Available ? new WindowsVoiceModel() : null;
     public IAudioOutput? Audio { get; } = new WindowsAudioOutput();

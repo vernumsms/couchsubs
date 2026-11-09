@@ -149,7 +149,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             server.SendStyle(value.Style);
             if (old.Dubbing != value.Dubbing) DubbingSettingsChanged(old.Dubbing);
             if (isRunning && (old.SourceLanguage != value.SourceLanguage || old.TargetLanguage != value.TargetLanguage
-                              || old.OnlineTranslation != value.OnlineTranslation))
+                              || old.OnlineTranslation != value.OnlineTranslation || old.AiTranslation != value.AiTranslation
+                              || old.AiModel != value.AiModel || old.InstantSubtitles != value.InstantSubtitles))
             {
                 RefreshTranslatorStatus();
                 MakePipeline();
@@ -837,7 +838,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         activeReader = reader;
         OcrMissing = reader is null || !services.HasOcrLanguage(settings.SourceLanguage);
         if (reader is null) return;
-        var built = new SubtitlePipeline(reader, MakeTranslator(), server, new ReadScheduler());
+        var built = new SubtitlePipeline(reader, MakeTranslator(), server, new ReadScheduler(), settings.InstantSubtitles);
         built.PairShown += (source, translation) =>
         {
             var box = built.LastBox;
@@ -857,6 +858,10 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     private ITextTranslator MakeTranslator()
     {
         var local = MakeLocalTranslator();
+        // Yapay zekâ çevirisi DeepL'den önce gelir: cihaz üstü çeviri hemen gösterilir, Claude'un Türkçesi ardından.
+        if (AiTranslationActive && store.Load<string>(StoreKeys.ClaudeKey) is { } aiKey &&
+            services.MakeAiTranslator(aiKey, settings.AiModel, local is UnavailableTranslator ? null : local) is { } ai)
+            return ai;
         if (OnlineTranslationActive && store.Load<string>(StoreKeys.DeepLKey) is { } key &&
             services.MakeOnlineTranslator(key, local is UnavailableTranslator ? null : local) is { } online)
             return online;
@@ -907,10 +912,45 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         RefreshTranslatorStatus();
     }
 
+    /// <summary>Claude yalnız İngilizce→Türkçe için açılır (sistem talimatı bu dil çifti için yazıldı).</summary>
+    private bool AiTranslationActive =>
+        settings.AiTranslation && settings.SourceLanguage == "en" && settings.TargetLanguage == "tr" && HasAiKey;
+
+    /// <summary>Kayıtlı bir Claude anahtarı var mı (anahtarın kendisi arayüze hiç dönmez).</summary>
+    public bool HasAiKey => store.Load<string>(StoreKeys.ClaudeKey) is { Length: > 0 };
+
+    /// <summary>Anahtar denenir; geçerliyse şifreli depoya yazılır ve yapay zekâ çevirisi açılır.</summary>
+    public async Task<OnlineKeyCheck> SetAiKeyAsync(string key)
+    {
+        key = key.Trim();
+        var check = await services.CheckAiKeyAsync(key, settings.AiModel);
+        if (check.State is OnlineKeyState.Valid or OnlineKeyState.QuotaExceeded)
+        {
+            store.Save(StoreKeys.ClaudeKey, key);
+            Changed(nameof(HasAiKey));
+            if (settings.AiTranslation && isRunning) MakePipeline();
+            else Settings = settings with { AiTranslation = true };
+            RefreshTranslatorStatus();
+        }
+        return check;
+    }
+
+    public Task<OnlineKeyCheck> CheckAiKeyAsync() =>
+        store.Load<string>(StoreKeys.ClaudeKey) is { Length: > 0 } key ? services.CheckAiKeyAsync(key, settings.AiModel)
+            : Task.FromResult(new OnlineKeyCheck(OnlineKeyState.Invalid));
+
+    public void RemoveAiKey()
+    {
+        store.Remove(StoreKeys.ClaudeKey);
+        Changed(nameof(HasAiKey));
+        Settings = settings with { AiTranslation = false };
+        RefreshTranslatorStatus();
+    }
+
     private void RefreshTranslatorStatus()
     {
         var translation = services.Translation;
-        TranslatorStatus = OnlineTranslationActive ? TranslatorStatus.Ready
+        TranslatorStatus = OnlineTranslationActive || AiTranslationActive ? TranslatorStatus.Ready
             : !translation.IsSupported(settings.SourceLanguage, settings.TargetLanguage) ? TranslatorStatus.Unsupported
             : translation.IsInstalled(settings.SourceLanguage, settings.TargetLanguage) ? TranslatorStatus.Ready
             : TranslatorStatus.NeedsDownload;

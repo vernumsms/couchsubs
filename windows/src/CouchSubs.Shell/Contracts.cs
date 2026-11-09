@@ -19,6 +19,8 @@ public static class StoreKeys
     public const string DevSessionRenewed = "devSessionRenewed";
     /// <summary>Kullanıcının DeepL anahtarı (isteğe bağlı çevrimiçi çeviri).</summary>
     public const string DeepLKey = "deepLKey";
+    /// <summary>Kullanıcının Anthropic (Claude) API anahtarı (yapay zekâ çevirisi).</summary>
+    public const string ClaudeKey = "claudeKey";
 }
 
 /// <summary>Kalıcı ayarlar (şifreli depo değil, sıradan ayar dosyası).</summary>
@@ -43,6 +45,12 @@ public sealed record UserSettings
     public DubbingSettings Dubbing { get; init; } = new();
     /// <summary>Anahtar girildiyse çeviri DeepL'le yapılır; kapalıysa ya da DeepL'e ulaşılamazsa cihaz üstü model.</summary>
     public bool OnlineTranslation { get; init; }
+    /// <summary>Anahtar girildiyse çeviri iki aşamalı olur: cihaz üstü model hemen, Claude'un Türkçesi ardından.</summary>
+    public bool AiTranslation { get; init; }
+    /// <summary>Claude modeli: kalite için Opus, hız ve düşük maliyet için Haiku.</summary>
+    public string AiModel { get; init; } = "claude-opus-5-5";
+    /// <summary>Anlık altyazı: yeni satır gelince eskisi hemen kalkar; geç gelen eski çeviriler gösterilmez.</summary>
+    public bool InstantSubtitles { get; init; } = true;
 
     /// <summary>Ek bölgenin sayısı; <see cref="ExtraRegion"/> 1..ExtraRegionCount arasında çalışır.</summary>
     public const int ExtraRegionCount = 3;
@@ -152,6 +160,9 @@ public interface IAppServices
     /// <summary>DeepL çevirmeni; <paramref name="fallback"/> DeepL'e ulaşılamayan satırları çevirir. Bu derlemede yoksa null.</summary>
     ITextTranslator? MakeOnlineTranslator(string key, ITextTranslator? fallback) => null;
     Task<OnlineKeyCheck> CheckOnlineKeyAsync(string key) => Task.FromResult(new OnlineKeyCheck(OnlineKeyState.Unreachable));
+    /// <summary>Claude çevirmeni (iki aşamalı); <paramref name="fallback"/> hemen gösterilen cihaz üstü çeviri. Bu derlemede yoksa null.</summary>
+    ITextTranslator? MakeAiTranslator(string key, string model, ITextTranslator? fallback) => null;
+    Task<OnlineKeyCheck> CheckAiKeyAsync(string key, string model) => Task.FromResult(new OnlineKeyCheck(OnlineKeyState.Unreachable));
     /// <summary>Türkçe dublaj modeli; bu derlemede yoksa null.</summary>
     IDubbingModel? Dubbing => null;
     /// <summary>Hızlı dublaj: sistemin kendi Türkçe sesi (Windows'ta Microsoft Tolga); yoksa null.</summary>

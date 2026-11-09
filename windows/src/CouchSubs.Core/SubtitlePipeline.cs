@@ -5,7 +5,13 @@ using CouchSubs.Core.Dubbing;
 namespace CouchSubs.Core;
 
 /// <summary>Kare → bölge → yazı tanıma → kararlılık → çeviri → TV.</summary>
-public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator translator, ISubtitleSender sender, ReadScheduler? scheduler = null)
+/// <param name="instant">
+/// Anlık altyazı: TV'de yalnız oyunda o an duran satırın çevirisi görünür. Yeni satır gelince eskisi okunmamış olsa
+/// da hemen kalkar; ekrandan kalkmış ya da yerini yenisine bırakmış satırın geç gelen çevirisi hiç gösterilmez.
+/// Hızlı sahnelerde altyazılar birbirine karışmaz.
+/// </param>
+public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator translator, ISubtitleSender sender, ReadScheduler? scheduler = null,
+    bool instant = false)
 {
     private readonly object gate = new();
     /// <summary>Varsayılanı her kareyi okur; uygulama gereksiz okumaları atlayan planı verir.</summary>
@@ -19,6 +25,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     /// </summary>
     private int lastRequested;
     private int lastShown;
+    /// <summary>Son satırın TV'ye gönderildiği an (ms); iyileştirilmiş çevirinin hâlâ gösterilip gösterilmeyeceği buna bakar.</summary>
+    private long lastShownAt;
     /// <summary>Şu an oyun ekranında duran satırın numarası (bölge boşalınca null).</summary>
     private int? lineOnScreen;
     /// <summary>Okuma durdurulunca artar; önceki oturumdan dönen çeviriler gösterilmez.</summary>
@@ -79,6 +87,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                     sender.Clear();
                     break;
                 case StabilizerKind.Translate:
+                    // Anlık modda yeni satır gelir gelmez eskisinin çevirisi kalkar; yenisinin çevirisi ardından gelir.
+                    if (instant && lastShown > 0) sender.Clear();
                     var number = ++lastRequested;
                     var current = session;
                     lineOnScreen = number;
@@ -116,9 +126,16 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     private async Task Translate(string source, TextBox? box, int number, int current)
     {
         string translated;
+        Task<string?>? refined = null;
         try
         {
-            translated = await translator.TranslateAsync(source);
+            if (translator is IProgressiveTranslator progressive)
+            {
+                var result = await progressive.TranslateProgressivelyAsync(source);
+                translated = result.Quick;
+                refined = result.Refined;
+            }
+            else translated = await translator.TranslateAsync(source);
         }
         catch (Exception error)
         {
@@ -143,13 +160,44 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         lock (gate)
         {
             if (number <= lastShown || !stabilizer.ShouldSend(source, translated)) return;
+            // Anlık modda yalnız oyunda hâlâ duran satır gösterilir.
+            if (instant && number != lineOnScreen) return;
             lastShown = number;
+            lastShownAt = Environment.TickCount64;
             // Satır hâlâ ekrandaysa kalkınca silinir; kalktıysa okunacak kadar gösterilir.
             sender.SendSubtitle(translated, number == lineOnScreen ? 15000 : ReadingTime(translated), box);
             LastPair = (source, translated);
             LastBox = box;
         }
         PairShown?.Invoke(source, translated);
+        // Dublaj iyileştirilmiş çeviriyi bekler (varsa); yoksa hızlı çeviri hemen seslendirilir.
+        if (refined is null)
+        {
+            if (SpeechReady is { } speech) speech(translator.SpokenLines(source));
+            return;
+        }
+        await ShowRefined(source, translated, refined, box, number, current);
+    }
+
+    /// <summary>
+    /// Daha iyi çeviri gelince, satır hâlâ TV'deki en son satırsa (arada yenisi gösterilmediyse) yazıyı değiştirir.
+    /// Satır ekrandan çoktan kalktıysa ve okuma süresi geçtiyse yeniden gösterilmez.
+    /// </summary>
+    private async Task ShowRefined(string source, string quick, Task<string?> refined, TextBox? box, int number, int current)
+    {
+        var better = await refined;
+        var changed = false;
+        lock (gate)
+        {
+            if (current == session && number == lastShown && better is { Length: > 0 } && better != quick
+                && (number == lineOnScreen || (!instant && Environment.TickCount64 - lastShownAt < ReadingTime(quick))))
+            {
+                sender.SendSubtitle(better, number == lineOnScreen ? 15000 : ReadingTime(better), box);
+                LastPair = (source, better);
+                changed = true;
+            }
+        }
+        if (changed) PairShown?.Invoke(source, better!);
         if (SpeechReady is { } speech) speech(translator.SpokenLines(source));
     }
 
