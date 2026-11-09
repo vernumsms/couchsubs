@@ -177,6 +177,10 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
         // Satırlar oyundaki gibi ayrılır; Claude aynı sayıda satırla, aynı sırayla yanıt vermeli.
         var source = SubtitleSegmenter.StackedLines(text);
         var allLines = source.Split('\n');
+        // Satırlardan biri başka bir istekte zaten çevriliyorsa (önceki blok hâlâ bekliyor) onun sonucu beklenir;
+        // yoksa önbellekte henüz olmadığı için yeniden çevrilirdi.
+        var waits = InFlight(allLines);
+        if (waits.Count > 0) await Task.WhenAny(Task.WhenAll(waits), Task.Delay(RequestTimeout, cancellationToken)).ConfigureAwait(false);
         // Satır önbelleği: oyun önceki replikleri ekranda tutup yenisini altına ekliyor ("A / B / C / D"). Önceden
         // çevrilmiş satırlar yeniden çevrilmez; Claude'a yalnız yeni satırlar gider (öncekiler bağlam olarak gider).
         // Denemede dört satırlık blokta yanıt 2,3 sn sürüyordu, tek satırda 1,2 sn.
@@ -184,6 +188,8 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
         var missing = Enumerable.Range(0, allLines.Length).Where(i => known[i] is null).ToList();
         var request = missing.Count == allLines.Length ? source : string.Join('\n', missing.Select(i => allLines[i]));
         var expectedLines = missing.Count;
+        // Bu istekte çevrilen satırlar "çevriliyor" diye işaretlenir; aynı anda gelen başka istek onları bekler.
+        using var claim = Claim(missing.Select(i => allLines[i]));
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(RequestTimeout);
         var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -336,12 +342,13 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
     /// <summary>Bir ekran satırının çevirisi: altyazısı, arayüz yazısı mı (gösterilmez, seslendirilmez), konuşması.</summary>
     internal sealed record LineResult(string Subtitle, bool Interface, SpokenLine? Speech);
 
-    /// <summary>Satır sonuçlarından altyazı ve konuşma; arayüz yazıları yalnız başkası yoksa gösterilir.</summary>
+    /// <summary>
+    /// Satır sonuçlarından altyazı ve konuşma. Arayüz yazıları (silah adı, zırh göstergesi, kumanda ipucu) ve okunamayan
+    /// satırlar gösterilmez; ekranda yalnız onlar varsa altyazı boştur ("BIPOD", "ARMOR PLATE / FULL" TV'de çıkıyordu).
+    /// </summary>
     internal static (string Translated, IReadOnlyList<SpokenLine> Speech)? Assemble(IReadOnlyList<LineResult> results)
     {
         var shown = results.Where(result => !result.Interface && result.Subtitle.Length > 0).Select(result => result.Subtitle).ToList();
-        if (shown.Count == 0) shown = [.. results.Where(result => result.Subtitle.Length > 0).Select(result => result.Subtitle)];
-        if (shown.Count == 0) return null;
         List<SpokenLine> speech = [.. results.Select(result => result.Speech).OfType<SpokenLine>()];
         // Ekranda tek konuşma kaldıysa arka plan sayılmaz (ana replik o; sesi kısılmaz).
         if (speech.Count > 0 && speech.All(line => line.Background)) speech = [.. speech.Select(line => line with { Background = false })];
@@ -467,6 +474,43 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
                 if (SameStoredLine(key, _lines[i].Key)) return _lines[i].Result;
         }
         return null;
+    }
+
+    /// <summary>Şu an başka bir istekte çevrilen satırlar (anahtar → istek bitince tamamlanan görev).</summary>
+    private readonly List<(string Key, Task Done)> _inFlight = [];
+
+    /// <summary>Bu satırlardan önbellekte olmayıp başka bir istekte çevrilenlerin görevleri.</summary>
+    private List<Task> InFlight(IEnumerable<string> lines)
+    {
+        var waits = new List<Task>();
+        foreach (var line in lines)
+        {
+            if (LookupLine(line) is not null) continue;
+            var key = TextMatch.Normalize(line);
+            if (key.Length == 0) continue;
+            lock (_linesGate)
+                foreach (var (other, done) in _inFlight)
+                    if (SameStoredLine(key, other)) waits.Add(done);
+        }
+        return waits;
+    }
+
+    /// <summary>Satırları "çevriliyor" diye işaretler; dönen nesne bırakılınca (istek bitince) işaret kalkar.</summary>
+    private InFlightClaim Claim(IEnumerable<string> lines)
+    {
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var keys = lines.Select(TextMatch.Normalize).Where(key => key.Length > 0).ToList();
+        lock (_linesGate) foreach (var key in keys) _inFlight.Add((key, done.Task));
+        return new InFlightClaim(() =>
+        {
+            lock (_linesGate) _inFlight.RemoveAll(entry => entry.Done == done.Task);
+            done.TrySetResult();
+        });
+    }
+
+    private sealed class InFlightClaim(Action release) : IDisposable
+    {
+        public void Dispose() => release();
     }
 
     private void StoreLine(string line, LineResult result)

@@ -237,10 +237,11 @@ public class ClaudeTranslatorTests
         var translator = new ClaudeTranslator(new FakeClaude(_ => both), new FakeLocal(), dubbing: () => true);
         Assert.Equal("Jae: Hadi, itin!", await (await translator.TranslateProgressivelyAsync(Lines("MOUNT", "Jae C'mon, push!"))).Refined);
 
-        const string only = """{"lines":[{"speaker":"","text":"NEW YORK ŞEHRİ","spoken":"","emotion":"neutral","gender":"unknown","dialogue":false}]}""";
-        var title = new ClaudeTranslator(new FakeClaude(_ => only), new FakeLocal(), dubbing: () => true);
-        Assert.Equal("NEW YORK ŞEHRİ", await (await title.TranslateProgressivelyAsync("NEW YORK CITY")).Refined);
-        Assert.Empty(title.SpokenLines("NEW YORK CITY"));
+        // Ekranda yalnız arayüz yazısı varsa ("ARMOR PLATE / FULL") altyazı boştur: gösterilmez.
+        const string only = """{"lines":[{"speaker":"","text":"ZIRH PLAKASI","spoken":"","emotion":"neutral","gender":"unknown","dialogue":false}]}""";
+        var gauge = new ClaudeTranslator(new FakeClaude(_ => only), new FakeLocal(), dubbing: () => true);
+        Assert.Equal("", await (await gauge.TranslateProgressivelyAsync("ARMOR PLATE")).Refined);
+        Assert.Empty(gauge.SpokenLines("ARMOR PLATE"));
     }
 
     /// Call of Duty: ad iki noktasız ("Lt. West Okay…"); Claude adı ayırır, arayüz yazısı seslendirilmez.
@@ -304,6 +305,42 @@ public class ClaudeTranslatorTests
         Assert.Equal(Lines("[tr] Take out that RPG!", "[tr] Shoot it down!"),
             await (await translator.TranslateProgressivelyAsync(Lines("Take out that RPG!", "Shoot it down!"))).Refined);
         Assert.Equal(2, claude.Requests.Count);
+    }
+
+    /// <summary>İlk isteği test bırakana kadar bekleten Claude.</summary>
+    private sealed class SlowClaude : IClaudeCompletion
+    {
+        public TaskCompletionSource FirstGate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public List<string> Requests { get; } = [];
+
+        public async Task<string> CompleteAsync(string system, string user, CancellationToken cancellationToken)
+        {
+            int count;
+            lock (Requests) { Requests.Add(user); count = Requests.Count; }
+            if (count == 1) await FirstGate.Task;
+            var lines = LastLine(user.ReplaceLineEndings("\n")).Split('\n');
+            return string.Join("\n", lines.Select(line => "[tr] " + line));
+        }
+
+        public Task<string> CompleteJsonAsync(string system, string user, string schema, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
+
+    /// Önceki blok hâlâ çevrilirken yenisi gelirse ortak satır yeniden istenmez; ilk isteğin sonucu beklenir.
+    [Fact]
+    public async Task LineAlreadyBeingTranslatedIsAwaitedNotResent()
+    {
+        var claude = new SlowClaude();
+        var translator = new ClaudeTranslator(claude, new FakeLocal());
+        var first = (await translator.TranslateProgressivelyAsync(Lines("Delta's in contact!", "Take out that RPG!"))).Refined;
+        var second = (await translator.TranslateProgressivelyAsync(Lines("Take out that RPG!", "We need reinforcements!"))).Refined;
+        await Task.Delay(100);
+        Assert.Single(claude.Requests);
+
+        claude.FirstGate.SetResult();
+        Assert.Equal(Lines("[tr] Delta's in contact!", "[tr] Take out that RPG!"), await first);
+        Assert.Equal(Lines("[tr] Take out that RPG!", "[tr] We need reinforcements!"), await second);
+        Assert.EndsWith("Translate:\nWe need reinforcements!", claude.Requests[1].ReplaceLineEndings("\n"));
     }
 
     [Theory]

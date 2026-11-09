@@ -2,7 +2,12 @@ CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Ori
 
 **İndir:** [Windows (kurulum)](https://github.com/vernumsms/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)
 
-**Bu sürümde yeni (claude.7): satır önbelleği, daha hızlı çeviri**
+**Bu sürümde yeni (claude.8): çakışmayan istekler, temiz ekran**
+
+- **Aynı satır iki kez çevrilmez.** Önceki blok hâlâ çevrilirken yeni satır gelince ortak satırlar yeniden gönderiliyordu; artık ilk isteğin sonucu bekleniyor, Claude'a yalnız gerçekten yeni satır gidiyor.
+- **Oyun arayüzü yazıları TV'de görünmez.** "BIPOD", "ARMOR PLATE / FULL", silah adları gibi yazılar seslendirilmiyordu ama altyazı olarak çıkıyordu; artık gösterilmiyor, hızlı çeviriyle göründüyse kaldırılıyor.
+
+**claude.7'de gelenler: satır önbelleği, daha hızlı çeviri**
 
 - **Yalnız yeni satır çevrilir.** Oyun önceki replikleri ekranda tutup yenisini altına eklediğinde (dört satıra kadar) eskiden bütün blok yeniden çevriliyordu; dört satırda yanıt 2,3 sn sürüyordu. Artık önceden çevrilmiş satırlar önbellekten geliyor, Claude'a yalnız yeni satır gidiyor (öncekiler bağlam olarak): gecikme ve maliyet düşüyor. Bütün satırlar önbellekteyse Claude'a hiç gidilmiyor.
 - **Satıra yapışık kumanda ipuçları temizlenir** ("— MOUNT Don't need to see you…", "RS MOUNT", "EQUIP").

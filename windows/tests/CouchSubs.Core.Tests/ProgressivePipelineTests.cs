@@ -60,6 +60,21 @@ public class ProgressivePipelineTests
         Assert.Equal(("We're gonna call his bluff.", "Blöfünü göreceğiz."), pipeline.LastPair);
     }
 
+    /// Yapay zekâ ekrandakinin altyazı olmadığını söylerse (boş çeviri) hızlı çeviri TV'den kaldırılır.
+    [Fact]
+    public async Task EmptyRefinementClearsQuickTranslation()
+    {
+        var sender = new FakeSender();
+        var translator = new FakeProgressive();
+        var pipeline = new SubtitlePipeline(new FakeReader("ARMOR PLATE FULL", "ARMOR PLATE FULL"), translator, sender);
+        await Run(pipeline, 2);
+        await WaitUntil(() => sender.Sent.Count == 1);
+        await translator.Refine("ARMOR PLATE FULL", "");
+        await pipeline.WaitForTranslationsAsync();
+        Assert.Equal(["hızlı: ARMOR PLATE FULL"], sender.Sent);
+        Assert.Equal(1, sender.Clears);
+    }
+
     [Fact]
     public async Task FailedRefinementKeepsQuickTranslation()
     {

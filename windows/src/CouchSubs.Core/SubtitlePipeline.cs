@@ -265,6 +265,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         }
         TranslationResult?.Invoke(null);
 
+        // Boş çeviri: ekrandaki yazı altyazı değil (oyun arayüzü); gösterilmez, seslendirilmez.
+        if (translated.Length == 0) return;
         lock (gate)
         {
             if (number <= lastShown || !stabilizer.ShouldSend(source, translated)) return;
@@ -307,7 +309,9 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                 LastPair = (source, better);
                 changed = true;
             }
-            if (current == session && better is { Length: > 0 }) Remember(source, better);
+            // Yapay zekâ ekrandakinin altyazı olmadığını söyledi (silah adı, gösterge): hızlı çeviri kaldırılır.
+            else if (current == session && number == lastShown && better is { Length: 0 }) sender.Clear();
+            if (current == session && better is not null) Remember(source, better);
         }
         if (changed) PairShown?.Invoke(source, better!);
         SpeakOnce(source);
