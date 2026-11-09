@@ -114,4 +114,53 @@ public class ClaudeTranslatorTests
         Assert.Equal("Koş!", ClaudeTranslator.Clean("  “Koş!” \n"));
         Assert.Equal("\"Koş\" dedi.", ClaudeTranslator.Clean("\"Koş\" dedi."));
     }
+
+    /// <summary>Satırları "\n" ile birleştirir (testlerde alt alta altyazı).</summary>
+    private static string Lines(params string[] lines) => string.Join("\n", lines);
+
+    [Fact]
+    public async Task StackedLinesKeepTheirOrderAndWrappedSentenceIsJoined()
+    {
+        var reply = Lines("Kapıyı tut.", "Koş!", "Onu yanlış yöne gönderdik, biliyorsun.");
+        var claude = new FakeClaude(_ => reply);
+        var translator = new ClaudeTranslator(claude, new FakeLocal());
+
+        var result = await translator.TranslateProgressivelyAsync(Lines("Hold the gate.", "Run!", "We sent him the wrong", "way, you know."));
+
+        Assert.EndsWith(Lines("Translate:", "Hold the gate.", "Run!", "We sent him the wrong way, you know."),
+            claude.Requests[0].User.ReplaceLineEndings("\n"));
+        Assert.Equal(reply, await result.Refined);
+    }
+
+    [Fact]
+    public async Task ReplyWithMergedLinesIsNotUsed()
+    {
+        var translator = new ClaudeTranslator(new FakeClaude(_ => "Kapıyı tut ve koş!"), new FakeLocal());
+        var result = await translator.TranslateProgressivelyAsync(Lines("Hold the gate.", "Run!"));
+        Assert.Null(await result.Refined);
+    }
+
+    [Fact]
+    public async Task DubbingKeepsEachSpeaker()
+    {
+        var source = Lines("MOON: Stay close.", "KRATOS: We move on.");
+        var translator = new ClaudeTranslator(new FakeClaude(_ => Lines("MOON: Yakın dur.", "KRATOS: Gidiyoruz.")), new FakeLocal());
+        await (await translator.TranslateProgressivelyAsync(source)).Refined;
+
+        var lines = translator.SpokenLines(source);
+
+        Assert.Equal(2, lines.Count);
+        Assert.Equal(("MOON", "Yakın dur.", "Stay close."), (lines[0].Speaker, lines[0].Turkish, lines[0].English));
+        Assert.Equal(("KRATOS", "Gidiyoruz."), (lines[1].Speaker, lines[1].Turkish));
+    }
+
+    [Theory]
+    [InlineData("Hold the gate.", "Run!", true)]
+    [InlineData("We sent him the wrong", "way, you know.", false)]
+    [InlineData("Help him", "Leave him behind", true)]
+    [InlineData("I don't know what", "I want anymore", false)]
+    [InlineData("Wait for me,", "Atreus", false)]
+    [InlineData("This is a much longer line that wraps", "Over to the next one", false)]
+    public void LineBreakIsKeptOnlyBetweenSeparateLines(string previous, string line, bool separate) =>
+        Assert.Equal(separate, SubtitleSegmenter.StartsNewLine(previous, line));
 }

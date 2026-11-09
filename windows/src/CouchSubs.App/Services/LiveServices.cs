@@ -23,7 +23,11 @@ public sealed class LiveServices : IAppServices
     public Task<OnlineKeyCheck> CheckOnlineKeyAsync(string key) => DeepLTranslator.CheckAsync(key);
 
     public ITextTranslator? MakeAiTranslator(string key, string model, ITextTranslator? fallback) =>
-        new ClaudeTranslator(new AnthropicCompletion(key, model), fallback);
+        new ClaudeTranslator(new AnthropicCompletion(key, model), fallback, AiLog);
+
+    /// <summary>Yapay zekâ çevirisinin yerel günlüğü (kalite ve gecikmeyi incelemek için).</summary>
+    private static readonly TranslationLog AiLog = new(Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CouchSubs", "ceviri.log"));
 
     public Task<OnlineKeyCheck> CheckAiKeyAsync(string key, string model) => AnthropicCompletion.CheckAsync(key, model);
     public IDubbingModel? Dubbing { get; } = PocketDubbingModel.EngineBundled ? new PocketDubbingModel() : null;

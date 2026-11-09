@@ -2,7 +2,13 @@ CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Ori
 
 **İndir:** [Windows (kurulum)](https://github.com/vernumsms/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)
 
-**Bu sürümde yeni**
+**Bu sürümde yeni (claude.2)**
+
+- **Alt alta satırlar oyundaki sırayla.** Oyunda alt alta duran ayrı cümleler, konuşmacılar ve seçenekler TV'de de ayrı satırlarda, yukarıdan aşağıya aynı sırayla gösterilir; yalnız alt satıra taşan cümle tek satırda birleşir. Claude satır sayısını ya da sırasını bozarsa o çeviri kullanılmaz. TV uygulaması 0.9.7 (CouchSubs çeviriyi başlatınca kendisi kurar).
+- **Claude çevirisinde dublaj konuşmacıları ayırır:** "MOON: …" ve "KRATOS: …" satırları her karakterin kendi sesiyle okunur.
+- **Çeviri günlüğü:** %LOCALAPPDATA%\CouchSubs\ceviri.log dosyasında her satırın Claude çevirisi ve yanıt süresi tutulur (yalnız bu bilgisayarda).
+
+**claude.1'de gelenler**
 
 - **Yapay zekâ çevirisi (Claude).** Bilgisayardaki çeviri modeli her satırı hemen gösterir; bir an sonra Claude onu deyimleri, argoyu ve bağlamı anlayan doğal Türkçeyle değiştirir ("We're gonna call his bluff" → "Blöfünü göreceğiz"). Önceki satırları ve konuşmacı adlarını bağlam olarak kullanır; seçenek listelerini satır satır çevirir; yazı tanıma hatalarını ("cali" → "call") düzeltir. Ayarlar › Yapay zekâ çevirisi'nden kendi Anthropic anahtarınızla açılır; varsayılan model Claude Haiku 5.5 (hızlı, düşük maliyet); en iyi kalite için Claude Opus 5.5 seçilebilir. Claude'a ulaşılamazsa bilgisayardaki çeviri kalır.
 - **Anlık altyazı.** Yalnız oyunda o an duran satırın çevirisi gösterilir: yeni satır gelince eskisi hemen kalkar, geç gelen eski çeviriler gösterilmez. Hızlı sahnelerde altyazılar birbirine karışmaz. Varsayılan olarak açık; Ayarlar › Anlık altyazı'dan kapatılabilir.

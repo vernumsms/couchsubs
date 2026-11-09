@@ -119,7 +119,8 @@
     shownAt = Date.now();
     currentBox = validBox(box);
     $('subtitle-text').textContent = text;
-    $('subtitle-text').style.whiteSpace = paragraphs ? 'pre-line' : '';
+    // Alt alta satırlar (ayrı konuşmacılar, cümleler, seçenekler) oyundaki sırayla, yukarıdan aşağıya gösterilir.
+    $('subtitle-text').style.whiteSpace = 'pre-line';
     $('subtitle-text').style.textAlign = paragraphs ? 'left' : '';
     $('subtitle').className = '';
     layout();

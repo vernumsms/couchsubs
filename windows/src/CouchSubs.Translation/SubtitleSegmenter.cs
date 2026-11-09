@@ -75,18 +75,44 @@ internal static partial class SubtitleSegmenter
             pendingSeparator = "\n";
         }
 
+        string? previous = null;
         foreach (var raw in lines)
         {
             var line = raw.Trim();
             if (line.Length == 0) continue;
-            // Etiketli ya da tireli satır yeni bir konuşmadır; diğer satırlar sarmadır, birleştirilir.
-            if (SpeakerLabel(line) is not null || DialogueDash().IsMatch(line)) FlushBlock();
+            // Etiketli ya da tireli satır yeni bir konuşmadır; oyunda alt alta duran ayrı cümleler ve seçenekler de ayrı
+            // satırda kalır (TV'de oyundaki sırayla, yukarıdan aşağıya). Cümlenin alt satıra taşan devamı birleştirilir.
+            if (SpeakerLabel(line) is not null || DialogueDash().IsMatch(line) || (previous is not null && StartsNewLine(previous, line)))
+                FlushBlock();
             if (block.Length > 0) block.Append(' ');
             block.Append(line);
+            previous = line;
         }
         FlushBlock();
         return pieces;
     }
+
+    /// <summary>
+    /// Alt satır, üstteki satırın devamı değil de ayrı bir satır mı: üstteki cümle bitmişse ve alt satır büyük harfle
+    /// başlıyorsa ayrı cümledir; ikisi de kısa, noktalamasız ve alttaki büyük harfle başlıyorsa seçenek listesidir.
+    /// </summary>
+    internal static bool StartsNewLine(string previous, string line)
+    {
+        var first = line[0];
+        var startsUpper = char.IsUpper(first) || char.IsDigit(first) || "\"“'‘¿¡([".Contains(first);
+        if (!startsUpper) return false;
+        if (Core.SubtitleStabilizer.EndsSentence(previous)) return true;
+        // "I don't know what / I want" gibi "I" ile süren satır sarmadır.
+        var firstWord = line.Split(' ', 2)[0].TrimEnd(',', '.');
+        if (firstWord is "I" or "I'm" or "I'll" or "I've" or "I'd" or "I’m" or "I’ll" or "I’ve" or "I’d") return false;
+        var last = previous[^1];
+        return !",;:-–—&".Contains(last) && WordCount(previous) <= 5 && WordCount(line) <= 5;
+    }
+
+    private static int WordCount(string text) => text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+
+    /// <summary>Satır yapısı düzeltilmiş metin: ayrı satırlar "\n" ile ayrılır, sarılmış cümleler tek satırdır.</summary>
+    public static string StackedLines(string text) => string.Concat(Split(text).Select(piece => piece.Text));
 
     private static void AddBlock(List<Piece> pieces, string block)
     {
