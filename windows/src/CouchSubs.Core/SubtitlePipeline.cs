@@ -153,7 +153,10 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         // Başa konuşmacı adı eklenmiş: "moon here take my radio" / "here take my radio".
         if (a.EndsWith(b, StringComparison.Ordinal) || b.EndsWith(a, StringComparison.Ordinal)) return true;
         // Sona yazı tanıma kırıntısı eklenmiş: "cho shit j" / "cho shit" (fark en çok 3 karakter).
-        return Math.Abs(a.Length - b.Length) <= 3 && (a.StartsWith(b, StringComparison.Ordinal) || b.StartsWith(a, StringComparison.Ordinal));
+        if (Math.Abs(a.Length - b.Length) <= 3 && (a.StartsWith(b, StringComparison.Ordinal) || b.StartsWith(a, StringComparison.Ordinal)))
+            return true;
+        // Yazı belirirken bozuk okunan uzun satır: "there s mure ccminq par fire that rpg" / "there s more coming park ...".
+        return Math.Min(a.Length, b.Length) >= 16 && TextMatch.IsSimilar(a, b, 0.72);
     }
 
     private RecentLine? FindRecent(string key, long now)
@@ -186,26 +189,34 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         line.SeenAt = now;
     }
 
-    /// <summary>Replik az önce seslendirildiyse yeniden seslendirilmez; dublaj her yeniden okumada baştan başlamasın.</summary>
+    /// <summary>
+    /// Yalnız az önce seslendirilmemiş satırlar seslendirilir. Oyun önceki repliği ekranda tutup yenisini altına
+    /// eklediğinde ("A / B", sonra "B / C") B ikinci kez okunmaz; dublaj her yeniden okumada baştan başlamaz ve
+    /// yazının gerisinde kalmaz.
+    /// </summary>
     private void SpeakOnce(string source)
     {
         if (SpeechReady is not { } speech) return;
-        var key = TextMatch.Normalize(source);
+        var lines = translator.SpokenLines(source);
+        var fresh = new List<Dubbing.SpokenLine>();
         lock (gate)
         {
             var now = Environment.TickCount64;
-            if (FindRecent(key, now) is { } line)
+            foreach (var line in lines)
             {
-                if (now - line.SpokenAt <= RecentMs) return;
-                line.SpokenAt = now;
+                var key = TextMatch.Normalize(line.English.Length > 0 ? line.English : line.Turkish);
+                var spoken = spokenLines.FindLastIndex(entry => now - entry.At <= RecentMs && SameLine(key, entry.Key));
+                if (spoken >= 0) continue;
+                spokenLines.Add((key, now));
+                fresh.Add(line);
             }
-            else
-            {
-                recent.Add(new RecentLine { Key = key, SeenAt = now, SpokenAt = now });
-            }
+            spokenLines.RemoveAll(entry => now - entry.At > RecentMs);
         }
-        speech(translator.SpokenLines(source));
+        if (fresh.Count > 0) speech(fresh);
     }
+
+    /// <summary>Son seslendirilen satırlar (İngilizcesi, zamanı).</summary>
+    private readonly List<(string Key, long At)> spokenLines = [];
 
     private async Task Translate(string source, TextBox? box, int number, int current, string? known = null)
     {
@@ -298,6 +309,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             session++;
             lineOnScreen = null;
             recent.Clear();
+            spokenLines.Clear();
             lastReading = Reading.Empty;
             schedule.Reset();
             if (stabilizer.Reset() == StabilizerAction.Clear) sender.Clear();

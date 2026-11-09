@@ -91,8 +91,7 @@ public class ProgressivePipelineTests
     public async Task FlickeringLineIsNotTranslatedOrSpokenAgain()
     {
         var sender = new FakeSender();
-        var translator = new GatedTranslator();
-        translator.Open();
+        var translator = new SpeakingTranslator();
         var spoken = 0;
         var pipeline = new SubtitlePipeline(new FakeReader("Yes, sir.", "", "", "", "", "", "", "Yes, sir."), translator, sender, instant: true);
         pipeline.SpeechReady += _ => spoken++;
@@ -100,6 +99,32 @@ public class ProgressivePipelineTests
         Assert.Equal(["Yes, sir."], translator.Requested);
         Assert.Equal(["TR: Yes, sir.", "TR: Yes, sir."], sender.Sent);
         Assert.Equal(1, spoken);
+    }
+
+    /// Oyun önceki repliği ekranda tutup yenisini altına ekleyince ("A / B", sonra "B / C") B yeniden seslendirilmez.
+    [Fact]
+    public async Task LineKeptOnScreenUnderNewOneIsSpokenOnce()
+    {
+        var translator = new SpeakingTranslator();
+        var spoken = new List<string>();
+        var pipeline = new SubtitlePipeline(new FakeReader("One line.\nTwo line.", "Two line.\nThree line."), translator, new FakeSender(), instant: true);
+        pipeline.SpeechReady += lines => spoken.AddRange(lines.Select(line => line.English));
+        for (var i = 0; i < 2; i++) { await pipeline.ProcessAsync(Image, new CropRegion()); await pipeline.WaitForTranslationsAsync(); }
+        Assert.Equal(["One line.", "Two line.", "Three line."], spoken);
+    }
+
+    /// <summary>Her satırı ayrı konuşma olarak veren çevirmen.</summary>
+    private sealed class SpeakingTranslator : ITextTranslator
+    {
+        public List<string> Requested { get; } = [];
+
+        public Task<string> TranslateAsync(string text, CancellationToken cancellationToken = default)
+        {
+            Requested.Add(text);
+            return Task.FromResult("TR: " + text);
+        }
+        public IReadOnlyList<Dubbing.SpokenLine> SpokenLines(string text) =>
+            [.. text.Split('\n').Select(line => new Dubbing.SpokenLine(line, "TR: " + line))];
     }
 
     /// Konuşmacı adı yazıdan sonra belirince ("Moon Here... take my radio.") aynı replik yeniden seslendirilmez.

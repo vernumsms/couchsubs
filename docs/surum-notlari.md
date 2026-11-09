@@ -2,7 +2,15 @@ CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Ori
 
 **İndir:** [Windows (kurulum)](https://github.com/vernumsms/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)
 
-**Bu sürümde yeni (claude.4): hızlı sahnelerde dublaj ve altyazı (Call of Duty denemesinden)**
+**Bu sürümde yeni (claude.5): gecikmeyen dublaj**
+
+- **Ekranda kalan satır yeniden seslendirilmez.** Call of Duty önceki repliği ekranda tutup yenisini altına ekliyor; her satır iki kez seslendirildiği için ses giderek geride kalıyordu. Artık her satır bir kez okunur.
+- **Bozuk okunan satırlar ayrı replik sayılmaz.** Yazı belirirken yanlış okunan uzun satırlar ("There's mure ccminq…") aynı replik olarak tanınıyor.
+- **Claude'un birleştirdiği satırlar kullanılır.** Yarım kalan iki satırı tek cümleye birleştiren yanıtlar eskiden atılıyordu.
+- **Kumanda ipuçları altyazıda görünmez** ("MOUNT", "EQUIP"); ekranda yalnız arayüz yazısı varsa (ör. "NEW YORK CITY") gösterilir.
+- **Daha kısa yanıt:** seslendirme metni altyazıyla aynıysa Claude onu yeniden yazmıyor; yanıt daha çabuk geliyor.
+
+**claude.4'te gelenler: hızlı sahnelerde dublaj ve altyazı (Call of Duty denemesinden)**
 
 - **Dublaj artık yarıda kesilmez.** Yeni replik gelince çalan cümle tamamlanır, bekleyen eski cümleler atlanır ve hemen yeni repliğe geçilir.
 - **Aynı replik bir kez seslendirilir.** Altyazı titreyince, yazı tanıma bir harfi farklı okuyunca ya da konuşmacı adı yazıdan sonra belirince aynı replik yeniden çevrilmiyor ve baştan seslendirilmiyor (denemede bir replik 6 kez seslendirilmişti).

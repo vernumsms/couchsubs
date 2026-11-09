@@ -76,16 +76,18 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
         - "speaker": the speaker's name as written at the start of the line (with or without a colon, including any
           rank, e.g. "Lt. West"), or "" when the line does not start with a name.
         - "text": the subtitle translation of what is said, without the speaker's name.
-        - "spoken": what the voice says: the same meaning in natural spoken Turkish, without names, dashes, button
-          names or symbols. Make it as short as the meaning allows so the voice keeps up with the game (shorter than
-          the subtitle when possible, never adding anything). Write numbers as words.
+        - "spoken": what the voice says when it should differ from "text": a shorter way to say the same thing in
+          natural spoken Turkish so the voice keeps up with the game, numbers written as words, no brackets or symbols.
+          Use "" when the voice can simply read "text" - that is the usual case.
         - "emotion": how the line is delivered, judged from the words, the earlier lines and the situation: "neutral",
           "happy", "sad", "angry", "surprised" or "calm".
         - "gender": "female" or "male" only when it is certain - a clearly female or male name, "she"/"he" or
           "ma'am"/"sir" said about this speaker. Many names (Moon, Jae, Park, Cho...) can be either: then "unknown".
         - "dialogue": true when the line is something a character says; false for game interface text that is not
-          spoken - ammo or score counters, weapon or item names, objectives, save notices, menu text. Only dialogue
-          lines are voiced.
+          spoken - button prompts ("MOUNT", "EQUIP"), ammo or score counters, weapon or item names, objectives, save
+          notices, menu text. Only dialogue lines are voiced.
+        - Keep one entry per input line. If a sentence is split over two input lines, translate each part on its own
+          entry anyway (the first may end mid-sentence).
         """;
 
     internal const string DubbingSchema = """
@@ -278,26 +280,39 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
         {
             using var document = System.Text.Json.JsonDocument.Parse(json);
             var entries = document.RootElement.GetProperty("lines").EnumerateArray().ToList();
-            if (entries.Count != english.Length) return null;
+            if (entries.Count == 0) return null;
+            // Claude yarım kalan iki satırı tek cümleye birleştirdiyse de çeviri kullanılır; sıra yine yukarıdan aşağıya.
+            // Satır sayısı tutmuyorsa İngilizce satırlarla eşleştirilmez (konuşmacı Claude'un "speaker" alanından).
+            var aligned = entries.Count == english.Length;
             var subtitles = new List<string>();
+            var interfaceText = new List<string>();
             var speech = new List<SpokenLine>();
             for (var i = 0; i < entries.Count; i++)
             {
                 var entry = entries[i];
                 var text = Clean(entry.GetProperty("text").GetString() ?? "").ReplaceLineEndings(" ");
-                if (text.Length == 0) return null;
-                var pieces = SubtitleSegmenter.Split(english[i]);
+                if (text.Length == 0) continue;
+                var pieces = aligned ? SubtitleSegmenter.Split(english[i]) : new List<SubtitleSegmenter.Piece>();
                 // Konuşmacı: Claude'un bulduğu ad (iki noktasız adlar da: "Lt. West Okay…"), yoksa "AD:" etiketi.
                 var named = entry.TryGetProperty("speaker", out var who) ? (who.GetString() ?? "").Trim().TrimEnd(':').Trim() : "";
                 var speaker = named.Length > 0 ? named
                     : pieces.Select(SubtitleSegmenter.LabelName).FirstOrDefault(name => name is { Length: > 0 });
                 if (speaker is not null && text.StartsWith(speaker + ":", StringComparison.OrdinalIgnoreCase))
                     text = text[(speaker.Length + 1)..].Trim();
-                subtitles.Add(speaker is null ? text : $"{speaker}: {text}");
-                // Oyun arayüzü yazıları (sayaç, silah adı, kayıt bildirimi) altyazıda kalır ama seslendirilmez.
-                if (entry.TryGetProperty("dialogue", out var dialogue) && dialogue.ValueKind == System.Text.Json.JsonValueKind.False) continue;
+                var subtitle = speaker is null ? text : $"{speaker}: {text}";
+                // Oyun arayüzü yazıları (kumanda ipucu, sayaç, silah adı) seslendirilmez; konuşmanın yanında altyazıda
+                // da gösterilmez. Ekranda yalnız onlar varsa (ör. "NEW YORK CITY") gösterilir.
+                if (entry.TryGetProperty("dialogue", out var dialogue) && dialogue.ValueKind == System.Text.Json.JsonValueKind.False)
+                {
+                    interfaceText.Add(subtitle);
+                    continue;
+                }
+                subtitles.Add(subtitle);
                 var newTurn = pieces.Count > 0 && !pieces[0].Translate && "-–—".Contains(pieces[0].Text[0]);
-                var spoken = (entry.GetProperty("spoken").GetString() ?? "").Trim().TrimStart('-', '–', '—', ' ');
+                // Konuşma metni boşsa altyazı okunur (köşeli parantez ve simgeler olmadan).
+                var spoken = (entry.GetProperty("spoken").GetString() ?? "").Trim();
+                if (spoken.Length == 0) spoken = text.Replace("[", "").Replace("]", "");
+                spoken = spoken.TrimStart('-', '–', '—', ' ');
                 if (!spoken.Any(char.IsLetter)) continue;
                 var emotion = entry.GetProperty("emotion").GetString() switch
                 {
@@ -314,10 +329,12 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
                     "male" => VoiceGender.Male,
                     _ => (VoiceGender?)null,
                 };
-                var said = string.Join(' ', pieces.Where(piece => piece.Translate).Select(piece => piece.Text));
-                speech.Add(new SpokenLine(said, spoken, speaker, newTurn, emotion, gender));
+                var said = aligned ? string.Join(' ', pieces.Where(piece => piece.Translate).Select(piece => piece.Text)) : "";
+                // Satırlar eşleşmediyse İngilizcesi bilinmez; tekrar önleme Türkçe metne bakar.
+                speech.Add(new SpokenLine(said.Length > 0 ? said : text, spoken, speaker, newTurn, emotion, gender));
             }
-            return (string.Join('\n', subtitles), speech);
+            if (subtitles.Count == 0) subtitles = interfaceText;
+            return subtitles.Count == 0 ? null : (string.Join('\n', subtitles), speech);
         }
         catch (Exception error) when (error is System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException)
         {

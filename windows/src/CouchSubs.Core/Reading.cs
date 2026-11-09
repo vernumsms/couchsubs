@@ -126,7 +126,10 @@ public sealed class Reading
     public Reading WithoutHudNumbers() => new(Lines.Where(line =>
     {
         int digits = line.Text.Count(char.IsDigit), letters = line.Text.Count(char.IsLetter);
-        return digits == 0 || letters > digits;
+        if (digits == 0) return true;
+        // Sıfırlar ve birler harf gibi okunabilir ("4 ooo", "1 lOO"): böyle harfler de rakam sayılır.
+        if (line.Text.Where(char.IsLetter).All(c => "oOlIi".Contains(c))) return false;
+        return letters > digits;
     }));
 
     /// <summary>Alt alta kısa ve noktalamasız satırlar ("MAP", "HELP", "SOCIAL CLUB") menüdür, konuşma değil.</summary>

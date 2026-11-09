@@ -216,12 +216,31 @@ public class ClaudeTranslatorTests
             (lines[1].Turkish, lines[1].Emotion, lines[1].Gender));
     }
 
+    /// Claude yarım kalan iki satırı tek cümleye birleştirdiyse de çeviri kullanılır (eskiden atılıyordu).
     [Fact]
-    public async Task DubbingReplyWithWrongLineCountIsNotUsed()
+    public async Task DubbingReplyWithMergedLinesIsStillUsed()
     {
-        const string json = """{"lines":[{"text":"Kapıyı tut ve koş!","spoken":"Kapıyı tut ve koş!","emotion":"neutral","gender":"unknown"}]}""";
+        const string json = """{"lines":[{"speaker":"News Reporter","text":"Tanıklar ağır topçu ateşi ve hasar bildiriyor.","spoken":"","emotion":"neutral","gender":"unknown","dialogue":true}]}""";
         var translator = new ClaudeTranslator(new FakeClaude(_ => json), new FakeLocal(), dubbing: () => true);
-        Assert.Null(await (await translator.TranslateProgressivelyAsync(Lines("Hold the gate.", "Run!"))).Refined);
+        var source = Lines("News Reporter: Witnesses are reporting heavy artillery fire", "News Reporter: and significant damage.");
+
+        Assert.Equal("News Reporter: Tanıklar ağır topçu ateşi ve hasar bildiriyor.", await (await translator.TranslateProgressivelyAsync(source)).Refined);
+        var line = Assert.Single(translator.SpokenLines(source));
+        Assert.Equal(("News Reporter", "Tanıklar ağır topçu ateşi ve hasar bildiriyor."), (line.Speaker, line.Turkish));
+    }
+
+    /// Kumanda ipucu ("MOUNT") konuşmanın yanında altyazıda gösterilmez; ekranda yalnız arayüz yazısı varsa gösterilir.
+    [Fact]
+    public async Task InterfaceTextIsHiddenNextToDialogue()
+    {
+        const string both = """{"lines":[{"speaker":"","text":"DAĞ","spoken":"","emotion":"neutral","gender":"unknown","dialogue":false},{"speaker":"Jae","text":"Hadi, itin!","spoken":"","emotion":"angry","gender":"unknown","dialogue":true}]}""";
+        var translator = new ClaudeTranslator(new FakeClaude(_ => both), new FakeLocal(), dubbing: () => true);
+        Assert.Equal("Jae: Hadi, itin!", await (await translator.TranslateProgressivelyAsync(Lines("MOUNT", "Jae C'mon, push!"))).Refined);
+
+        const string only = """{"lines":[{"speaker":"","text":"NEW YORK ŞEHRİ","spoken":"","emotion":"neutral","gender":"unknown","dialogue":false}]}""";
+        var title = new ClaudeTranslator(new FakeClaude(_ => only), new FakeLocal(), dubbing: () => true);
+        Assert.Equal("NEW YORK ŞEHRİ", await (await title.TranslateProgressivelyAsync("NEW YORK CITY")).Refined);
+        Assert.Empty(title.SpokenLines("NEW YORK CITY"));
     }
 
     /// Call of Duty: ad iki noktasız ("Lt. West Okay…"); Claude adı ayırır, arayüz yazısı seslendirilmez.
@@ -237,7 +256,8 @@ public class ClaudeTranslatorTests
         var translator = new ClaudeTranslator(new FakeClaude(_ => json), new FakeLocal(), dubbing: () => true);
         var source = Lines("Lt. West Okay, listen up.", "Han 86");
 
-        Assert.Equal(Lines("Lt. West: Tamam, dinleyin.", "Han 86"), await (await translator.TranslateProgressivelyAsync(source)).Refined);
+        // Silah adı (arayüz yazısı) konuşmanın yanında gösterilmez ve seslendirilmez.
+        Assert.Equal("Lt. West: Tamam, dinleyin.", await (await translator.TranslateProgressivelyAsync(source)).Refined);
         var lines = translator.SpokenLines(source);
         Assert.Single(lines);
         Assert.Equal(("Lt. West", "Tamam, dinleyin."), (lines[0].Speaker, lines[0].Turkish));
