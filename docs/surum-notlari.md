@@ -2,7 +2,11 @@ CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Ori
 
 **İndir:** [Windows (kurulum)](https://github.com/vernumsms/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)
 
-**Bu sürümde yeni (claude.8): çakışmayan istekler, temiz ekran**
+**Bu sürümde yeni (claude.9): doğru konuşmacı adı**
+
+- **Hitap konuşmacı adı sanılmaz.** "Valeria Luca. They're still on us" satırında konuşan Valeria'dır, "Luca." hitaptır; eskiden ad "Valeria Luca" sanılıyor, sonraki replikler de "Valeria Luca:" diye yazılıyor ve ayrı bir ses alıyordu.
+
+**claude.8'de gelenler: çakışmayan istekler, temiz ekran**
 
 - **Aynı satır iki kez çevrilmez.** Önceki blok hâlâ çevrilirken yeni satır gelince ortak satırlar yeniden gönderiliyordu; artık ilk isteğin sonucu bekleniyor, Claude'a yalnız gerçekten yeni satır gidiyor.
 - **Oyun arayüzü yazıları TV'de görünmez.** "BIPOD", "ARMOR PLATE / FULL", silah adları gibi yazılar seslendirilmiyordu ama altyazı olarak çıkıyordu; artık gösterilmiyor, hızlı çeviriyle göründüyse kaldırılıyor.

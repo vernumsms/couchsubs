@@ -384,6 +384,7 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
                 var pieces = aligned ? SubtitleSegmenter.Split(english[i]) : new List<SubtitleSegmenter.Piece>();
                 // Konuşmacı: Claude'un bulduğu ad (iki noktasız adlar da: "Lt. West Okay…"), yoksa "AD:" etiketi.
                 var named = entry.TryGetProperty("speaker", out var who) ? (who.GetString() ?? "").Trim().TrimEnd(':').Trim() : "";
+                if (aligned) named = WithoutVocative(named, english[i]);
                 var speaker = named.Length > 0 ? named
                     : pieces.Select(SubtitleSegmenter.LabelName).FirstOrDefault(name => name is { Length: > 0 });
                 if (speaker is not null && text.StartsWith(speaker + ":", StringComparison.OrdinalIgnoreCase))
@@ -433,6 +434,20 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Konuşmacı adının sonundaki hitap: "Valeria Luca. They're still on us" satırında konuşan Valeria'dır, "Luca."
+    /// cümlenin parçasıdır (hitap). Addan hemen sonra nokta, virgül, ünlem ya da soru işareti geliyorsa son sözcük addan
+    /// atılır. "Lt. West Okay…" gibi adlarda addan sonra boşluk geldiği için ad olduğu gibi kalır.
+    /// </summary>
+    internal static string WithoutVocative(string speaker, string english)
+    {
+        var line = english.TrimStart();
+        while (speaker.Contains(' ') && line.StartsWith(speaker, StringComparison.OrdinalIgnoreCase)
+               && line.Length > speaker.Length && ".,!?".Contains(line[speaker.Length]))
+            speaker = speaker[..speaker.LastIndexOf(' ')].TrimEnd();
+        return speaker;
     }
 
     /// <summary>Önceki satırlar (bağlam), bilinen isimler ve çevrilecek metin.</summary>

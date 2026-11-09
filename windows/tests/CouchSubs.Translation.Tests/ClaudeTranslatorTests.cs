@@ -344,6 +344,30 @@ public class ClaudeTranslatorTests
     }
 
     [Theory]
+    [InlineData("Valeria Luca", "Valeria Luca. They're still on us, we're heading east.", "Valeria")]
+    [InlineData("Lt. West", "Lt. West Okay, Sierra-I, listen up.", "Lt. West")]
+    [InlineData("Price", "Price Where is Makarov?", "Price")]
+    [InlineData("Konni Guard", "Konni Guard [We need the boss out of here!]", "Konni Guard")]
+    public void VocativeIsNotPartOfSpeakerName(string speaker, string english, string expected) =>
+        Assert.Equal(expected, ClaudeTranslator.WithoutVocative(speaker, english));
+
+    /// "Valeria Luca. They're still on us": konuşan Valeria; Luca hitap. Yanlış ad sonraki repliklere de taşınmaz.
+    [Fact]
+    public async Task VocativeDoesNotBecomeSpeaker()
+    {
+        const string json = """{"lines":[{"speaker":"Valeria Luca","text":"Hâlâ peşimizdeler.","spoken":"","emotion":"neutral","gender":"female","dialogue":true,"background":false}]}""";
+        var claude = new FakeClaude(_ => json);
+        var translator = new ClaudeTranslator(claude, new FakeLocal(), dubbing: () => true);
+        var source = "Valeria Luca. They're still on us.";
+
+        Assert.Equal("Valeria: Hâlâ peşimizdeler.", await (await translator.TranslateProgressivelyAsync(source)).Refined);
+        Assert.Equal("Valeria", translator.SpokenLines(source)[0].Speaker);
+        await (await translator.TranslateProgressivelyAsync("Valeria Exit here.")).Refined;
+        Assert.Contains("Names: Valeria", claude.Requests[1].User);
+        Assert.DoesNotContain("Valeria Luca", claude.Requests[1].User.Split('\n').Single(line => line.StartsWith("Names:")));
+    }
+
+    [Theory]
     [InlineData("here take my radio", "moon here take my radio", true)]
     [InlineData("helo s armored sweetheart american made", "hollis annorod sweetheart american made", true)]
     [InlineData("run", "you need to run", false)]
