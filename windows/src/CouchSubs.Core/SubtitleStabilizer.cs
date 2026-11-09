@@ -16,7 +16,12 @@ public readonly record struct StabilizerAction(StabilizerKind Kind, string? Text
 /// Kare kare gelen OCR çıktısını izler; altyazı kararlı hale gelince çevrilmesini,
 /// ekrandan kalkınca TV'den temizlenmesini ister. Aynı altyazıyı tekrar göndermez.
 /// </summary>
-public sealed class SubtitleStabilizer(double similarity = 0.85, int stableFrames = 2, int emptyFramesToClear = 2)
+/// <param name="fastSentences">
+/// true ise noktalamayla biten satır ilk karede gönderilir. false ise her satır <paramref name="stableFrames"/> kare
+/// aynı okunmalıdır: yazı belirirken ya da görüntü bozulurken okunan çöp satırlar ("V'.lfiere, Ibe, flick") iki karede
+/// aynı çıkmadığı için elenir.
+/// </param>
+public sealed class SubtitleStabilizer(double similarity = 0.85, int stableFrames = 2, int emptyFramesToClear = 2, bool fastSentences = true)
 {
     private string candidate = "";
     private int candidateCount;
@@ -52,7 +57,7 @@ public sealed class SubtitleStabilizer(double similarity = 0.85, int stableFrame
         }
         // Daktilo efektinde metin büyürken aday değişir; tamamlanıp kararlı olunca gider.
         // Noktalamayla biten satır zaten tamamdır; hızlı konuşmada beklemeden ilk karede gider.
-        var ready = candidateCount == stableFrames || (candidateCount == 1 && EndsSentence(rawText));
+        var ready = candidateCount == stableFrames || (fastSentences && candidateCount == 1 && EndsSentence(rawText));
         // Gönderilenin gürültülü yeniden okuması yeni satır değildir; TV'de aynı cümle iki kez görünmesin.
         if (!ready || TextMatch.IsSimilar(text, sent, similarity) || TextMatch.IsSameSubtitle(text, sent)) return StabilizerAction.None;
         sent = text;

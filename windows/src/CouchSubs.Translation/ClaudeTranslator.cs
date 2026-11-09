@@ -59,7 +59,9 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
           the sentence; a word the game cannot have meant as a name is part of the sentence.
         - Do not translate names of characters, places, factions or items. Spell them as in the "Names" list.
         - The text comes from OCR and may contain recognition mistakes ("cali" for "call", "l" for "I", missing
-          punctuation). Infer what the English most likely says and translate that.
+          punctuation). Infer what the English most likely says and translate that. Never invent content: if a line
+          is too garbled to be sure what it says ("V'.lfiere, Ibe, flick are going fill?!", "ptice GOI you."), use the
+          earlier lines to recover it only when that is clear; otherwise leave that line empty.
         - The text may have several lines, stacked on the screen from top to bottom: different speakers, separate
           sentences or dialogue choices. Translate each line on its own and reply with exactly the same number of
           lines, in the same order. Never merge, split or reorder lines. Keep button symbols or numbers as they are.
@@ -86,13 +88,20 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
         - "dialogue": true when the line is something a character says; false for game interface text that is not
           spoken - button prompts ("MOUNT", "EQUIP"), ammo or score counters, weapon or item names, objectives, save
           notices, menu text. Only dialogue lines are voiced.
+        - "background": true when the line is heard in the background while another line on screen is the main
+          conversation - radio or comms chatter, a distant or off-screen shout, a crowd, a voice on a TV or loudspeaker,
+          a bracketed line ("[He's heading to the helo!]") spoken over the main speakers. Background lines are voiced
+          quietly at the same time as the main line instead of waiting their turn. A line alone on screen is never
+          background.
         - Keep one entry per input line. If a sentence is split over two input lines, translate each part on its own
-          entry anyway (the first may end mid-sentence).
+          entry anyway (the first may end mid-sentence). For a line too garbled to read, use "text": "" and
+          "dialogue": false.
         """;
 
     internal const string DubbingSchema = """
         {"type":"object","additionalProperties":false,"required":["lines"],"properties":{"lines":{"type":"array","items":{
-        "type":"object","additionalProperties":false,"required":["speaker","text","spoken","emotion","gender","dialogue"],"properties":{
+        "type":"object","additionalProperties":false,"required":["speaker","text","spoken","emotion","gender","dialogue","background"],"properties":{
+        "background":{"type":"boolean"},
         "speaker":{"type":"string"},"text":{"type":"string"},"spoken":{"type":"string"},
         "emotion":{"type":"string","enum":["neutral","happy","sad","angry","surprised","calm"]},
         "gender":{"type":"string","enum":["female","male","unknown"]},"dialogue":{"type":"boolean"}}}}}}
@@ -331,8 +340,11 @@ public sealed class ClaudeTranslator : IProgressiveTranslator
                 };
                 var said = aligned ? string.Join(' ', pieces.Where(piece => piece.Translate).Select(piece => piece.Text)) : "";
                 // Satırlar eşleşmediyse İngilizcesi bilinmez; tekrar önleme Türkçe metne bakar.
-                speech.Add(new SpokenLine(said.Length > 0 ? said : text, spoken, speaker, newTurn, emotion, gender));
+                var background = entry.TryGetProperty("background", out var behind) && behind.ValueKind == System.Text.Json.JsonValueKind.True;
+                speech.Add(new SpokenLine(said.Length > 0 ? said : text, spoken, speaker, newTurn, emotion, gender, background));
             }
+            // Ekranda tek konuşma kaldıysa arka plan sayılmaz (ana replik o; sesi kısılmaz).
+            if (speech.Count > 0 && speech.All(line => line.Background)) speech = [.. speech.Select(line => line with { Background = false })];
             if (subtitles.Count == 0) subtitles = interfaceText;
             return subtitles.Count == 0 ? null : (string.Join('\n', subtitles), speech);
         }

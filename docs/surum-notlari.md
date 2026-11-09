@@ -2,7 +2,13 @@ CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Ori
 
 **İndir:** [Windows (kurulum)](https://github.com/vernumsms/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)
 
-**Bu sürümde yeni (claude.5): gecikmeyen dublaj**
+**Bu sürümde yeni (claude.6): sakin altyazı, arka plan sesleri**
+
+- **Altyazı titremez.** Çevirisi süren replik yeniden okunduğunda (konuşmacı adı bir görünüp bir kayboluyor) yeni çeviri istenmiyor; denemede aynı replik bir saniyede yedi kez çevriliyor, altyazı her seferinde değişiyordu.
+- **Bozuk okumalar ekrana çıkmaz.** Anlık modda her satır iki kare aynı okunmadan kabul edilmiyor (≈50 ms); yazı belirirken okunan çöp satırlar eleniyor. Claude da okunamayan satırı uydurmak yerine boş bırakıyor.
+- **Arka plan sesleri aynı anda.** Telsiz konuşması, uzaktan bağırış, TV'deki spiker gibi arka plan replikleri sıra beklemeden ana repliğin üstüne daha kısık sesle karışıyor; dublaj kalabalık sahnelerde geride kalmıyor.
+
+**claude.5'te gelenler: gecikmeyen dublaj**
 
 - **Ekranda kalan satır yeniden seslendirilmez.** Call of Duty önceki repliği ekranda tutup yenisini altına ekliyor; her satır iki kez seslendirildiği için ses giderek geride kalıyordu. Artık her satır bir kez okunur.
 - **Bozuk okunan satırlar ayrı replik sayılmaz.** Yazı belirirken yanlış okunan uzun satırlar ("There's mure ccminq…") aynı replik olarak tanınıyor.

@@ -263,6 +263,27 @@ public class ClaudeTranslatorTests
         Assert.Equal(("Lt. West", "Tamam, dinleyin."), (lines[0].Speaker, lines[0].Turkish));
     }
 
+    /// Arka plandaki konuşma işaretlenir; ekranda tek konuşma kaldıysa o arka plan sayılmaz.
+    [Fact]
+    public async Task BackgroundLinesAreMarked()
+    {
+        const string two = """
+            {"lines":[
+              {"speaker":"Konni Guard","text":"Helikoptere gidiyor!","spoken":"","emotion":"angry","gender":"unknown","dialogue":true,"background":true},
+              {"speaker":"Price","text":"Makarov nerede?","spoken":"","emotion":"angry","gender":"male","dialogue":true,"background":false}
+            ]}
+            """;
+        var translator = new ClaudeTranslator(new FakeClaude(_ => two), new FakeLocal(), dubbing: () => true);
+        var source = Lines("Konni Guard [He's heading to the helo!]", "Price Where is Makarov?");
+        await (await translator.TranslateProgressivelyAsync(source)).Refined;
+        Assert.Equal([true, false], translator.SpokenLines(source).Select(line => line.Background));
+
+        const string one = """{"lines":[{"speaker":"","text":"Helikoptere gidiyor!","spoken":"","emotion":"angry","gender":"unknown","dialogue":true,"background":true}]}""";
+        var alone = new ClaudeTranslator(new FakeClaude(_ => one), new FakeLocal(), dubbing: () => true);
+        await (await alone.TranslateProgressivelyAsync("[He's heading to the helo!]")).Refined;
+        Assert.False(Assert.Single(alone.SpokenLines("[He's heading to the helo!]")).Background);
+    }
+
     [Fact]
     public void DubbingSchemaIsValidJson()
     {

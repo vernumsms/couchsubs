@@ -17,7 +17,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     /// <summary>Varsayılanı her kareyi okur; uygulama gereksiz okumaları atlayan planı verir.</summary>
     private readonly ReadScheduler schedule = scheduler ?? ReadScheduler.Always();
     /// <summary>Kareler saniyede ~20 kez okunur; yaklaşık 0,3 sn boş kalan bölge altyazının kalktığı anlamına gelir.</summary>
-    private readonly SubtitleStabilizer stabilizer = new(emptyFramesToClear: 6);
+    /// <summary>Anlık modda her satır iki kare aynı okunmalıdır (bozuk okumalar elenir; bir kare ≈ 50 ms).</summary>
+    private readonly SubtitleStabilizer stabilizer = new(emptyFramesToClear: 6, fastSentences: !instant);
     private readonly Dictionary<int, Task> translations = [];
     /// <summary>
     /// Her çeviri isteği sıra numarası alır. Hızlı konuşmada çeviriler sırasız dönebilir:
@@ -88,6 +89,19 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                     sender.Clear();
                     break;
                 case StabilizerKind.Translate:
+                    // Çevirisi henüz sürmekte olan replik yeniden okunduysa (konuşmacı adı bir görünüp bir kayboldu,
+                    // yazı tanıma bir harfi farklı okudu) yeni istek yapılmaz; ilk çevirisi beklenir. Denemede aynı
+                    // replik bir saniyede yedi kez çevriliyor, altyazı da her seferinde değişiyordu.
+                    var key = TextMatch.Normalize(action.Text!);
+                    var now = Environment.TickCount64;
+                    var seen = FindRecent(key, now);
+                    var fresh = seen is not null && now - seen.SeenAt <= RecentMs;
+                    if (fresh && seen!.Translation.Length == 0) break;
+                    if (seen is null)
+                    {
+                        recent.Add(new RecentLine { Key = key, SeenAt = now });
+                        if (recent.Count > 32) recent.RemoveAt(0);
+                    }
                     // Anlık modda yeni satır gelir gelmez eskisinin çevirisi kalkar; yenisinin çevirisi ardından gelir.
                     if (instant && lastShown > 0) sender.Clear();
                     var number = ++lastRequested;
@@ -98,7 +112,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                     var box = reading.Box?.PlacedIn(area).CenteredOnScreen();
                     // Az önce çevrilen replik yeniden okunduysa (altyazı titredi, yazı tanıma bir harfi farklı okudu,
                     // konuşmacı adı sonradan belirdi) çevirisi yeniden istenmez; kayıtlı çeviri gösterilir.
-                    var known = RecentTranslation(TextMatch.Normalize(action.Text!));
+                    var known = fresh ? seen!.Translation : null;
                     var task = TranslateAndForget(action.Text!, box, number, current, known);
                     if (!task.IsCompleted) translations[number] = task;
                     break;
@@ -167,13 +181,6 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         return null;
     }
 
-    /// <summary>Kilit altında çağrılır.</summary>
-    private string? RecentTranslation(string key)
-    {
-        var now = Environment.TickCount64;
-        return FindRecent(key, now) is { Translation.Length: > 0, SeenAt: var seen } line && now - seen <= RecentMs ? line.Translation : null;
-    }
-
     /// <summary>Gösterilen çeviriyi hatırlar (kilit altında).</summary>
     private void Remember(string source, string translation)
     {
@@ -238,6 +245,9 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             lock (gate)
             {
                 if (current != session) return;
+                // Çeviri olmadı: replik "çevriliyor" diye bekletilmez, yeniden okununca yeniden denenir.
+                var failed = TextMatch.Normalize(source);
+                recent.RemoveAll(line => line.Translation.Length == 0 && line.Key == failed);
                 // Model eksikse ya da geçici bir hata olduysa satır ekranda kaldıkça yeniden denenir.
                 LastError = (error as TranslatorException)?.Status;
                 if (number == lineOnScreen) stabilizer.ForgetSent();
@@ -250,6 +260,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         {
             if (current != session) return;
             LastError = null;
+            // Gösterilmese de (yerini yenisine bıraktıysa) çeviri hatırlanır; replik "çevriliyor" diye takılı kalmaz.
+            Remember(source, translated);
         }
         TranslationResult?.Invoke(null);
 

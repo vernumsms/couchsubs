@@ -60,6 +60,24 @@ public sealed class SpeechAudio(float[] samples, int sampleRate)
     }
 
     /// <summary>16 bit PCM WAV.</summary>
+    /// <summary>
+    /// Arka plan konuşmasını bu sesin üstüne karıştırır: <paramref name="gain"/> ile kısılır, <paramref name="offset"/>
+    /// saniye sonra başlar. Örnekleme hızı farklıysa arka plan atlanır (aynı motorun sesleri hep aynı hızdadır).
+    /// </summary>
+    public SpeechAudio MixedWith(SpeechAudio background, float gain = 0.45f, double offset = 0.15)
+    {
+        if (background.SampleRate != SampleRate || background.Samples.Length == 0) return this;
+        var start = (int)(offset * SampleRate);
+        var mixed = new float[Math.Max(Samples.Length, start + background.Samples.Length)];
+        Samples.CopyTo(mixed, 0);
+        for (var i = 0; i < background.Samples.Length; i++)
+            mixed[start + i] = Math.Clamp(mixed[start + i] + (background.Samples[i] * gain), -1f, 1f);
+        return new SpeechAudio(mixed, SampleRate);
+    }
+
+    /// <summary>Sesi kısar (arka plan konuşması tek başına çalınacaksa).</summary>
+    public SpeechAudio Scaled(float gain) => new([.. Samples.Select(sample => sample * gain)], SampleRate);
+
     public byte[] ToWav()
     {
         var payload = Samples.Length * 2;

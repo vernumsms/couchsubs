@@ -192,38 +192,74 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
         SpokenLine line;
         DubbingVoice? preview;
         int lineBatch;
+        var backgrounds = new List<SpokenLine>();
         lock (gate)
         {
             // Geç başlayan eski döngü yeni altyazının cümlesini alıp atmasın.
             if (queue.Count == 0 || number != generation) return null;
             (line, preview) = queue.Dequeue();
             lineBatch = batch;
+            if (preview is null)
+            {
+                // Arka plan replikleri sıra beklemez, ana repliğin üstüne kısık sesle karışır. Sıradaki ilk replik arka
+                // plansa ve ardından bir ana replik geliyorsa ana replik öne alınır.
+                if (line.Background && queue.TryPeek(out var after) && after.Preview is null && !after.Line.Background)
+                {
+                    backgrounds.Add(line);
+                    line = queue.Dequeue().Line;
+                }
+                while (backgrounds.Count < 2 && queue.TryPeek(out var next) && next.Preview is null && next.Line.Background)
+                    backgrounds.Add(queue.Dequeue().Line);
+            }
         }
         DubbingVoice voice;
+        var backgroundVoices = new List<DubbingVoice>();
         if (preview is { } chosen)
         {
             voice = chosen;
         }
         else
         {
-            bool assigned;
+            var assigned = false;
             VoiceCast? copy = null;
             lock (gate)
             {
-                voice = Cast.VoiceFor(line, out assigned);
+                voice = Cast.VoiceFor(line, out var newVoice);
+                assigned |= newVoice;
+                foreach (var background in backgrounds)
+                {
+                    backgroundVoices.Add(Cast.VoiceFor(background, out newVoice));
+                    assigned |= newVoice;
+                }
                 if (assigned) copy = Cast.Copy();
             }
             if (copy is not null) post(() => CastChanged?.Invoke(copy));
         }
         // Yapay zekâ sahneye göre bir ton seçtiyse o, seçmediyse İngilizce metinden tahmin.
-        var text = SpeechText.Prepare(line.Turkish, line.Emotion ?? SpeechEmotions.Guess(line.English));
-        var url = new Uri($"http://127.0.0.1:{serverPort()}/voices/{voice.FileName()}.wav");
+        string Text(SpokenLine spoken) => SpeechText.Prepare(spoken.Turkish, spoken.Emotion ?? SpeechEmotions.Guess(spoken.English));
+        Uri Url(DubbingVoice chosenVoice) => new($"http://127.0.0.1:{serverPort()}/voices/{chosenVoice.FileName()}.wav");
+        var text = Text(line);
+        var url = Url(voice);
+        var extra = backgrounds.Select((background, i) => (Text: Text(background), Url: Url(backgroundVoices[i]))).ToList();
+        // Tek başına kalan arka plan repliği de kısık çalınır.
+        var alone = preview is null && line.Background && extra.Count == 0;
         var engine = Synthesizer();
         return Task.Run<(SpeechAudio, bool, int)?>(async () =>
         {
             try
             {
-                return ((await engine.SynthesizeAsync(text, url)).Tightened(), preview is not null, lineBatch);
+                var main = engine.SynthesizeAsync(text, url);
+                var others = extra.Select(async item =>
+                {
+                    try { return (await engine.SynthesizeAsync(item.Text, item.Url)).Tightened(); }
+                    // Arka plan seslendirilemediyse ana replik yine çalınır.
+                    catch { return null; }
+                }).ToList();
+                var audio = (await main).Tightened();
+                foreach (var background in await Task.WhenAll(others))
+                    if (background is not null) audio = audio.MixedWith(background);
+                if (alone) audio = audio.Scaled(0.6f);
+                return (audio, preview is not null, lineBatch);
             }
             // Motor ne olursa olsun (pocket-tts, Windows sesi) bir cümlenin hatası dublajı durdurmaz.
             catch (Exception error)

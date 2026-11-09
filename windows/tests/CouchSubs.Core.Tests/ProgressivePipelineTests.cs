@@ -93,9 +93,9 @@ public class ProgressivePipelineTests
         var sender = new FakeSender();
         var translator = new SpeakingTranslator();
         var spoken = 0;
-        var pipeline = new SubtitlePipeline(new FakeReader("Yes, sir.", "", "", "", "", "", "", "Yes, sir."), translator, sender, instant: true);
+        var pipeline = new SubtitlePipeline(new FakeReader("Yes, sir.", "Yes, sir.", "", "", "", "", "", "", "Yes, sir.", "Yes, sir."), translator, sender, instant: true);
         pipeline.SpeechReady += _ => spoken++;
-        for (var i = 0; i < 8; i++) { await pipeline.ProcessAsync(Image, new CropRegion()); await pipeline.WaitForTranslationsAsync(); }
+        for (var i = 0; i < 10; i++) { await pipeline.ProcessAsync(Image, new CropRegion()); await pipeline.WaitForTranslationsAsync(); }
         Assert.Equal(["Yes, sir."], translator.Requested);
         Assert.Equal(["TR: Yes, sir.", "TR: Yes, sir."], sender.Sent);
         Assert.Equal(1, spoken);
@@ -107,9 +107,10 @@ public class ProgressivePipelineTests
     {
         var translator = new SpeakingTranslator();
         var spoken = new List<string>();
-        var pipeline = new SubtitlePipeline(new FakeReader("One line.\nTwo line.", "Two line.\nThree line."), translator, new FakeSender(), instant: true);
+        var pipeline = new SubtitlePipeline(new FakeReader("One line.\nTwo line.", "One line.\nTwo line.", "Two line.\nThree line.", "Two line.\nThree line."),
+            translator, new FakeSender(), instant: true);
         pipeline.SpeechReady += lines => spoken.AddRange(lines.Select(line => line.English));
-        for (var i = 0; i < 2; i++) { await pipeline.ProcessAsync(Image, new CropRegion()); await pipeline.WaitForTranslationsAsync(); }
+        for (var i = 0; i < 4; i++) { await pipeline.ProcessAsync(Image, new CropRegion()); await pipeline.WaitForTranslationsAsync(); }
         Assert.Equal(["One line.", "Two line.", "Three line."], spoken);
     }
 
@@ -137,18 +138,44 @@ public class ProgressivePipelineTests
         await Task.CompletedTask;
     }
 
+    /// Anlık mod: tek karede bozuk okunan satır çevrilmez; iki kare aynı okunan satır çevrilir.
+    [Fact]
+    public async Task GarbledSingleFrameIsIgnored()
+    {
+        var translator = new SpeakingTranslator();
+        var pipeline = new SubtitlePipeline(new FakeReader("V'.lfiere, Ibe, flick are going fill?!", "Where are you going?!", "Where are you going?!"),
+            translator, new FakeSender(), instant: true);
+        for (var i = 0; i < 3; i++) { await pipeline.ProcessAsync(Image, new CropRegion()); await pipeline.WaitForTranslationsAsync(); }
+        Assert.Equal(["Where are you going?!"], translator.Requested);
+    }
+
+    /// Çevirisi süren replik (konuşmacı adı bir görünüp bir kayboluyor) yeniden çeviriye gönderilmez.
+    [Fact]
+    public async Task LineStillBeingTranslatedIsNotRequestedAgain()
+    {
+        var translator = new GatedTranslator();
+        var sender = new FakeSender();
+        var pipeline = new SubtitlePipeline(new FakeReader("Price Makarov!", "Price Makarov!", "Makarov!", "Makarov!", "Price Makarov!", "Price Makarov!"),
+            translator, sender, instant: true);
+        await Run(pipeline, 6);
+        Assert.Equal(["Price Makarov!"], translator.Requested);
+        translator.Open();
+        await pipeline.WaitForTranslationsAsync();
+        Assert.Equal(["TR: Price Makarov!"], sender.Sent);
+    }
+
     /// Anlık mod: yeni satır gelir gelmez eski çeviri kalkar.
     [Fact]
     public async Task InstantModeClearsPreviousLineAsSoonAsNewOneAppears()
     {
         var sender = new FakeSender();
         var translator = new GatedTranslator();
-        var pipeline = new SubtitlePipeline(new FakeReader("Hold the gate.", "Run!"), translator, sender, instant: true);
-        await Run(pipeline, 1);
+        var pipeline = new SubtitlePipeline(new FakeReader("Hold the gate.", "Hold the gate.", "Run!", "Run!"), translator, sender, instant: true);
+        await Run(pipeline, 2);
         await translator.Release("Hold the gate.");
         await WaitUntil(() => sender.Sent.Count == 1);
         Assert.Equal(0, sender.Clears);
-        await Run(pipeline, 1);
+        await Run(pipeline, 2);
         // "Run!" henüz çevrilmeden "Hold the gate." TV'den kalkmış olmalı.
         Assert.Equal(1, sender.Clears);
         await translator.Release("Run!");
@@ -162,8 +189,8 @@ public class ProgressivePipelineTests
     {
         var sender = new FakeSender();
         var translator = new GatedTranslator();
-        var pipeline = new SubtitlePipeline(new FakeReader("Hold the gate.", "Run!"), translator, sender, instant: true);
-        await Run(pipeline, 2);
+        var pipeline = new SubtitlePipeline(new FakeReader("Hold the gate.", "Hold the gate.", "Run!", "Run!"), translator, sender, instant: true);
+        await Run(pipeline, 4);
         await translator.Release("Hold the gate.");
         await translator.Release("Run!");
         await pipeline.WaitForTranslationsAsync();
@@ -176,8 +203,8 @@ public class ProgressivePipelineTests
     {
         var sender = new FakeSender();
         var translator = new GatedTranslator();
-        var pipeline = new SubtitlePipeline(new FakeReader("Hold the gate.", "", "", "", "", "", ""), translator, sender, instant: true);
-        await Run(pipeline, 7);
+        var pipeline = new SubtitlePipeline(new FakeReader("Hold the gate.", "Hold the gate.", "", "", "", "", "", ""), translator, sender, instant: true);
+        await Run(pipeline, 8);
         Assert.Equal(1, sender.Clears);
         translator.Open();
         await pipeline.WaitForTranslationsAsync();
@@ -190,8 +217,8 @@ public class ProgressivePipelineTests
     {
         var sender = new FakeSender();
         var translator = new FakeProgressive();
-        var pipeline = new SubtitlePipeline(new FakeReader("Hold the gate.", "", "", "", "", "", ""), translator, sender, instant: true);
-        await Run(pipeline, 1);
+        var pipeline = new SubtitlePipeline(new FakeReader("Hold the gate.", "Hold the gate.", "", "", "", "", "", ""), translator, sender, instant: true);
+        await Run(pipeline, 2);
         await WaitUntil(() => sender.Sent.Count == 1);
         await Run(pipeline, 6);
         await translator.Refine("Hold the gate.", "Kapıyı tut.");

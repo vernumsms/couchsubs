@@ -108,6 +108,18 @@ public class SpeechAudioTests
 
     private static float[] Silence(double seconds) => new float[(int)(seconds * 24000)];
 
+    /// Arka plan konuşması kısılıp biraz geç başlayarak ana sesin üstüne karışır.
+    [Fact]
+    public void BackgroundIsMixedQuieterAndSlightlyLater()
+    {
+        var main = new SpeechAudio([.. Tone(0.3)], 24000);
+        var background = new SpeechAudio(Enumerable.Repeat(0.5f, 24000 / 2).ToArray(), 24000);
+        var mixed = main.MixedWith(background, gain: 0.4f, offset: 0.25);
+        Assert.Equal(0.75, mixed.Duration, 0.01);
+        Assert.Equal(main.Samples[100], mixed.Samples[100]);
+        Assert.Equal(0.2f, mixed.Samples[(int)(0.6 * 24000)], 3);
+    }
+
     [Fact]
     public void LongPausesAreShortenedTo200Ms()
     {

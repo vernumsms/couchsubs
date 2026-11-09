@@ -53,6 +53,25 @@ public class DubberTests
         }
     }
 
+    /// Aynı anda konuşulan arka plan repliği sıra beklemez: ana replikle birlikte tek seferde çalınır.
+    [Fact]
+    public async Task BackgroundLineIsPlayedTogetherWithMainLine()
+    {
+        var synth = new FakeSynth();
+        var audio = new FakeAudio();
+        using var server = new SubtitleServer(0);
+        var dubber = new Dubber(new FakeModel(synth), audio, () => server, () => 8787, action => action()) { Output = DubbingOutput.Computer };
+        dubber.Speak([
+            new SpokenLine("He's heading to the helo!", "Helikoptere gidiyor!", Background: true),
+            new SpokenLine("Where is Makarov?", "Makarov nerede?", "Price"),
+        ]);
+        await WaitUntil(() => audio.Played == 1);
+        await Task.Delay(300);
+        Assert.Equal(1, audio.Played);
+        lock (synth.Calls) Assert.Equal(2, synth.Calls.Count);
+        await dubber.DisposeAsync();
+    }
+
     [Fact]
     public async Task LinesAreVoicedInOrderWithEmotionAndTheCharactersVoice()
     {
