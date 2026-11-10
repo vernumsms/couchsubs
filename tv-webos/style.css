@@ -104,6 +104,9 @@ html, body {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 .theme-modern .who { color: #F5B83D; }
+/* Örtme yerleşiminde örtü ile şerit tek parça görünür: aynı renk, aynı köşe. */
+.theme-modern #subtitle-cover { border-radius: 18px; background: rgba(14, 15, 18, 0.97); }
+.covering .theme-modern #subtitle-text { background: rgba(14, 15, 18, 0.97) !important; }
 /* Klasik görünümde ad ayrı renk almaz. */
 .theme-classic .who { color: inherit; }
 

@@ -40,17 +40,24 @@ public class TextMatchTests
     /// Call of Duty'de altyazı solarken okunan bozuk satırlar (kayıttan); Claude bunlardan uydurma cümle çıkarıyordu.
     [Theory]
     [InlineData("[lell now he died. I", "[Tell me how he died.]")]
-    [InlineData("Ilhey musl hiding near IIIE crash silp I", "[They must be hiding near the crash site...]")]
     [InlineData("Chow •s still hanqinc; hy a thruat:.", "Chow's still hanging on by a thread.")]
     [InlineData("The largp qray hilildinrg", "Ko The large, gray building.")]
-    [InlineData("Palk qonna wanta c.hütk this cur", "Dunn Park- You're gonna wanna check this out.")]
-    [InlineData("Kal Hit the hiltton.", "Kal Hit the button.")]
     public void FadingRereadIsSameSubtitle(string reread, string sent) =>
         Assert.True(TextMatch.IsSameSubtitle(TextMatch.Normalize(reread), TextMatch.Normalize(sent)));
 
     [Theory]
     [InlineData("we do not have time", "the gate will not hold")]
     [InlineData("kal copy yellow triangle", "look for a yellow triangle")]
+    // claude.14 kaydı: bunlar aynı satır sanılıp hafızadaki yanlış çeviri gösterildi (bkz. IsFadingReread).
+    [InlineData("move to that white house", "ka okay which cne liu yr ill wan io hil next")]
+    [InlineData("we can do that", "ka okay which cne liu yr ill wan io hil next")]
+    [InlineData("dunn ready when you are park", "kal copy on your six park shit i didn t even hear you guys")]
+    [InlineData("dunn is that all of them", "dunn what do we call you then")]
+    [InlineData("kal they re moving between the houses", "kal until these sam sites are down we re not going anywhere")]
+    [InlineData("dunn here they come", "dunn hey check north")]
+    [InlineData("dunn we got vehicles incoming", "kal until these sam sites are down we re not going anywhere")]
+    [InlineData("kal prep for contact", "kal fog s heavy should keep us hidden on approach")]
+    [InlineData("park hit the other routes", "park ko jin hyuk i found an empty house it s like the people just disappeared")]
     [InlineData("fastest route is the north door it may be flooded", "fastest route is the north door")]
     [InlineData("two targets left park", "one target left park")]
     [InlineData("we do not have time for this boy and you know it", "we do not have time")]

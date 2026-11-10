@@ -67,28 +67,36 @@ public static class TextMatch
 
     /// <summary>
     /// Altyazı solarken ya da belirirken yazı tanıma sözcükleri harf harf bozar: "Tell me how he died" →
-    /// "lell now he died", "They must be hiding" → "Ilhey musl hiding". Sözcüklerin çoğu ya aynı ya da gönderilen
-    /// bir sözcüğün bozuk hâliyse yeni satır değildir (Claude bozuk metinden uydurma bir cümle çıkarıyordu).
-    /// Bir iki harf farkı anlam değiştirebilir ("east" / "west"); bu yüzden ya en az iki bozuk sözcük ya da en az
-    /// iki harfi bozulmuş uzun (5+ harf) bir sözcük gerekir. Kısa satırlar ve belirgin uzayan metin (yeni satır) bu kurala girmez.
+    /// "lell now he died". Sözcükler gönderilen satırdakilerle aynı sırada, ya birebir ya da birkaç harfi bozulmuş
+    /// hâlde duruyorsa yeni satır değildir. Kural bilerek sıkı: gevşek hâli (claude.13) farklı cümleleri de aynı
+    /// sanıyordu ("is that all of them" / "what do we call you then") ve hafızadaki yanlış çeviri gösteriliyordu.
+    /// Yanlış çeviri göstermektense bozuk satırı bir kez daha çevirtmek iyidir.
     /// </summary>
     private static bool IsFadingReread(List<string> reread, List<string> sent)
     {
         if (reread.Count < 4 || reread.Count > sent.Count + 1) return false;
-        int shared = 0, misread = 0;
+        int shared = 0, misread = 0, next = 0;
         var strong = false;
         foreach (var word in reread)
         {
-            if (sent.Contains(word)) { shared++; continue; }
-            if (word.Length < 3) continue;
-            var closest = sent.Where(s => s.Length >= 3).Select(s => Distance(word, s) / (double)Math.Max(word.Length, s.Length)).DefaultIfEmpty(1).Min();
-            if (closest > 0.5) continue;
-            misread++;
-            if (word.Length >= 5 && sent.Where(s => s.Length >= 3).Min(s => Distance(word, s)) >= 2) strong = true;
+            // Sözcük, gönderilen satırda bir önceki eşleşmenin ilerisinde aranır (sıra korunmalı).
+            for (var k = next; k < sent.Count; k++)
+            {
+                var other = sent[k];
+                if (word == other) { shared++; next = k + 1; break; }
+                if (word.Length < 3 || other.Length < 3) continue;
+                var distance = Distance(word, other);
+                // En çok %40'ı bozulmuş: "hanqinc" / "hanging", "musl" / "must"; "that" / "then" (%50) sayılmaz.
+                if (distance / (double)Math.Max(word.Length, other.Length) > 0.4) continue;
+                misread++;
+                next = k + 1;
+                if (word.Length >= 5 && distance >= 2) strong = true;
+                break;
+            }
         }
-        // En az bir sözcük birebir aynı olmalı: "we should keep moving" sözcükleri "would/deep/hoping"e benzese de yeni satırdır.
+        // Bir iki harf farkı anlam değiştirebilir ("east" / "west"): en az iki bozuk sözcük ya da çok bozulmuş uzun bir sözcük gerekir.
         if (shared == 0 || misread == 0 || (misread < 2 && !strong)) return false;
-        return shared + misread >= reread.Count * 0.65;
+        return shared + misread >= reread.Count * 0.75;
     }
 
     // Tek harfler ("a", "I" ya da OCR'ın uydurduğu "O") karşılaştırmaya bir şey katmaz.

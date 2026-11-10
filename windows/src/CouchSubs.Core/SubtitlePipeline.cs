@@ -212,29 +212,28 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         else sender.SendSubtitle(text, ReadingTime(text), box);
     }
 
-    /// <summary>Bir önceki altyazının (başka satır numarası) çeviri satırları ve son gönderilenin numarası/satırları.</summary>
-    private string[] previousLines = [];
-    private string[] sentLines = [];
-    private int sentNumber;
+    /// <summary>Son gösterilen çeviri satırları: sadeleştirilmiş satır, hangi altyazıda (numara) ve ne zaman.</summary>
+    private readonly List<(string Key, int Number, long At)> shownLines = [];
+    /// <summary>Bu kadar süre içinde başka bir altyazıda gösterilmiş satır yeniden gösterilmez.</summary>
+    private const int ShownLinesMs = 15000;
 
     /// <summary>
-    /// Oyun önceki repliği ekranda tutup yenisini altına ekliyor ("A / B", sonra "B / C"). TV'de B ikinci kez
-    /// gösterilmez, yalnız yeni satır (C) çıkar; aynı satır blokta iki kez geçiyorsa bir kez yazılır. Bütün satırlar
-    /// zaten gösterildiyse metin olduğu gibi kalır.
+    /// Oyun önceki replikleri ekranda tutup yenisini altına ekliyor ("A / B", sonra "A / B / C"). TV'de A ve B ikinci
+    /// kez gösterilmez, yalnız yeni satır (C) çıkar; aynı satır blokta iki kez geçiyorsa bir kez yazılır. Bütün
+    /// satırlar zaten gösterildiyse metin olduğu gibi kalır. Yalnız bir önceki altyazıya bakmak yetmiyordu: oyun
+    /// üç dört satırı birden tuttuğunda iki altyazı önceki satır yeniden çıkıyordu.
     /// </summary>
     private string WithoutRepeatedLines(string text, int number)
     {
+        var now = Environment.TickCount64;
+        shownLines.RemoveAll(entry => now - entry.At > ShownLinesMs);
         var lines = text.Split('\n');
-        if (number != sentNumber)
-        {
-            previousLines = sentLines;
-            sentNumber = number;
-        }
-        sentLines = lines;
-        var seen = new HashSet<string>(previousLines.Select(line => TextMatch.Normalize(line)));
+        var seen = new HashSet<string>(shownLines.Where(entry => entry.Number != number).Select(entry => entry.Key));
         var kept = new List<string>();
         foreach (var line in lines)
             if (seen.Add(TextMatch.Normalize(line))) kept.Add(line);
+        foreach (var line in lines) shownLines.Add((TextMatch.Normalize(line), number, now));
+        if (shownLines.Count > 64) shownLines.RemoveRange(0, shownLines.Count - 64);
         return kept.Count == 0 || kept.Count == lines.Length ? text : string.Join('\n', kept);
     }
 
@@ -448,8 +447,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             lastReading = Reading.Empty;
             schedule.Reset();
             onScreenText = null;
-            previousLines = [];
-            sentLines = [];
+            shownLines.Clear();
             if (stabilizer.Reset() == StabilizerAction.Clear) sender.Clear();
         }
     }

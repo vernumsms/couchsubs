@@ -2,7 +2,13 @@
 
 **İndir:** [Windows (kurulum)](https://github.com/vernumsms/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)
 
-**Bu sürümde yeni (claude.14): Altyazı+ — yeni ad, yeni görünüm**
+**Bu sürümde yeni (claude.15): yanlış çeviri düzeltmesi**
+
+- **Farklı cümleye hafızadaki yanlış çeviri gelmez.** claude.13'teki "bozuk okunan satır" kuralı fazla gevşekti: "Is that all of them?" gibi yeni bir satıra, benzer harfli eski bir satırın çevirisi ("O zaman sana ne diyelim?") gösteriliyordu. Kural sıkılaştırıldı.
+- **Eski satırlar yeniden çıkmaz.** Oyun üç dört satırı birden tuttuğunda iki altyazı önceki satır da tekrar gösteriliyordu; artık son 15 saniyede gösterilen satırlar atlanıyor.
+- **TV'de örtme daha temiz.** Örtü yanlarda daha geniş (oyunun renkli konuşmacı adları kenardan görünmüyor), şeritle aynı renk ve köşede: yarı saydam şeridin içinde ayrı siyah kutu görünmüyor. TV uygulaması 0.9.9.
+
+**claude.14'te gelenler: Altyazı+ — yeni ad, yeni görünüm**
 
 - **Uygulamanın adı artık Altyazı+.** Yeni logo, koyu başlık çubuğu. Ayarlar, Claude anahtarı ve çeviri hafızası yerinde kalır.
 - **TV'de modern altyazı.** Yumuşak köşeli şerit, ince çerçeve, konuşmacı adı sarı ("Kal:", "Park:"). Ayarlar → Altyazı → Görünüm'den eski düz kutuya dönülebilir. TV uygulaması 0.9.8.

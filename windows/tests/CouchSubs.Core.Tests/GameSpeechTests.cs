@@ -105,3 +105,29 @@ public class RepeatedLineTests
         Assert.Equal("TR Park Hit it now!", sender.Sent[^1]);
     }
 }
+
+public class StackedLineTests
+{
+    private sealed class LineTranslator : ITextTranslator
+    {
+        public Task<string> TranslateAsync(string text, CancellationToken cancellationToken = default) =>
+            Task.FromResult(string.Join('\n', text.Split('\n').Select(line => "TR " + line)));
+    }
+
+    /// Oyun üç satırı birden tutuyor: iki altyazı önceki satır da yeniden çıkmamalı.
+    [Fact]
+    public async Task LinesFromEarlierSubtitlesAreNotShownAgain()
+    {
+        var sender = new FakeSender();
+        const string a = "Kal Ready, Park?", b = "Park Hit it now!", c = "Dunn Watch the fireworks!";
+        var pipeline = new SubtitlePipeline(
+            new FakeReader(a, a, a + "\n" + b, a + "\n" + b, a + "\n" + b + "\n" + c, a + "\n" + b + "\n" + c, a + "\n" + b + "\n" + c),
+            new LineTranslator(), sender);
+        for (var i = 0; i < 7; i++)
+        {
+            await pipeline.ProcessAsync(Frame.Blank(64, 64), new CropRegion());
+            await pipeline.WaitForTranslationsAsync();
+        }
+        Assert.Equal("TR " + c, sender.Sent[^1]);
+    }
+}

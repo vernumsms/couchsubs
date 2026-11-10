@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.8';
+  var APP_VERSION = '0.9.9';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -236,6 +236,7 @@
     el.style.top = 'auto';
     el.style.bottom = bottomPercent + '%';
     cover.className = 'hidden';
+    document.documentElement.className = '';
     // Altyazı yokken (ör. ayar değişince yeniden yerleşirken) örtü tek başına boş siyah kutu olarak kalmasın.
     if (!box || el.className === 'hidden') return;
 
@@ -254,12 +255,16 @@
 
     if (mode === 'cover') {
       // İngilizce yazı koyu bir zeminle örtülür, çeviri onun ortasına gelir.
-      var pad = 0.012;
-      cover.style.left = ((box.left - pad) * 100) + '%';
-      cover.style.top = ((box.top - pad) * 100) + '%';
-      cover.style.width = ((box.right - box.left + 2 * pad) * 100) + '%';
-      cover.style.height = ((box.bottom - box.top + 2 * pad) * 100) + '%';
+      // Yanlarda daha geniş pay: oyunun renkli konuşmacı adları ("Ko", "Ri") yazı tanımanın kutusunun dışında
+      // kalıp örtünün kenarından görünüyordu.
+      var padX = 0.03, padY = 0.014;
+      cover.style.left = ((box.left - padX) * 100) + '%';
+      cover.style.top = ((box.top - padY) * 100) + '%';
+      cover.style.width = ((box.right - box.left + 2 * padX) * 100) + '%';
+      cover.style.height = ((box.bottom - box.top + 2 * padY) * 100) + '%';
       cover.className = '';
+      // Örtülürken çevirinin zemini örtüyle aynı renkte olur: yarı saydam şeridin içinde ayrı bir siyah kutu görünmez.
+      document.documentElement.className = 'covering';
       var middle = (1 - (box.top + box.bottom) / 2) * height;
       el.style.bottom = Math.max(0, Math.round(middle - $('subtitle-text').offsetHeight / 2)) + 'px';
     } else if (mode === 'above') {
