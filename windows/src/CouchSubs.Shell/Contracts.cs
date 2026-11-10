@@ -55,6 +55,8 @@ public sealed record UserSettings
     public string GameName { get; init; } = "";
     /// <summary>Oyuncunun notları ve sözlüğü ("Ghost = Ghost", "Price erkek"); her istekte Claude'a gönderilir.</summary>
     public string GameNotes { get; init; } = "";
+    /// <summary>Deneysel: oyunun sesi dinlenir, altyazısı olmayan konuşmalar da çevrilir (Whisper, bilgisayarda).</summary>
+    public bool ListenToGame { get; init; }
 
     /// <summary>Ek bölgenin sayısı; <see cref="ExtraRegion"/> 1..ExtraRegionCount arasında çalışır.</summary>
     public const int ExtraRegionCount = 3;
@@ -181,6 +183,8 @@ public interface IAppServices
     IFirewall? Firewall => null;
     /// <summary>Yerel tanı günlüğüne bir satır (tür, milisaniye, metin): çeviri ve dublaj zamanlaması. Testlerde yok sayılır.</summary>
     void WriteDiagnostic(string kind, long milliseconds, string text) { }
+    /// <summary>Oyun sesini yazıya çeviren model (Whisper); bu derlemede yoksa null.</summary>
+    IGameSpeechModel? GameSpeech => null;
 }
 
 /// <param name="Launched">false ise TV uygulaması açılamadı; büyük olasılıkla TV'de kurulu değil.</param>

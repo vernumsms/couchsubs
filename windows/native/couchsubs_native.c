@@ -14,6 +14,7 @@
 
 #include <libavcodec/avcodec.h>
 #include <libavutil/frame.h>
+#include <libavutil/channel_layout.h>
 #include <libavutil/log.h>
 #include <libavutil/mem.h>
 #include <libswscale/swscale.h>
@@ -524,17 +525,117 @@ static int cs_decoder_decode(cs_decoder *decoder, const uint8_t *data, size_t si
 
 /* --- Görüntü akışı --- */
 
+/* --- Opus ses çözücü (FFmpeg'in kendi Opus çözücüsü) --- */
+
+typedef struct {
+	AVCodecContext *codec;
+	AVPacket *packet;
+	AVFrame *frame;
+	float *mono;
+	int mono_capacity;
+	bool failed;
+} cs_audio_decoder;
+
+static void cs_audio_decoder_fini(cs_audio_decoder *decoder)
+{
+	avcodec_free_context(&decoder->codec);
+	av_packet_free(&decoder->packet);
+	av_frame_free(&decoder->frame);
+	av_free(decoder->mono);
+	decoder->mono = NULL;
+	decoder->mono_capacity = 0;
+}
+
+static int cs_audio_decoder_init(cs_audio_decoder *decoder, int channels, int rate)
+{
+	cs_audio_decoder_fini(decoder);
+	const AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_OPUS);
+	if(!codec)
+		return -1;
+	decoder->codec = avcodec_alloc_context3(codec);
+	decoder->packet = av_packet_alloc();
+	decoder->frame = av_frame_alloc();
+	if(!decoder->codec || !decoder->packet || !decoder->frame)
+		goto fail;
+	decoder->codec->sample_rate = rate > 0 ? rate : 48000;
+	av_channel_layout_default(&decoder->codec->ch_layout, channels > 0 ? channels : 2);
+	if(avcodec_open2(decoder->codec, codec, NULL) < 0)
+		goto fail;
+	return 0;
+fail:
+	cs_audio_decoder_fini(decoder);
+	return -1;
+}
+
 struct cs_session {
 	ChiakiSession session;
 	ChiakiLog log;
 	cs_log_target log_target;
 	cs_frame_cb frame;
+	cs_audio_cb audio;
 	cs_event_cb event;
 	void *user;
 	cs_decoder decoder;
 	cs_throttle throttle;
 	bool decoder_ready;
+	cs_audio_decoder audio_decoder;
 };
+
+static void cs_session_audio_header(ChiakiAudioHeader *header, void *user)
+{
+	cs_session *session = user;
+	if(cs_audio_decoder_init(&session->audio_decoder, header->channels, (int)header->rate) != 0)
+	{
+		session->audio_decoder.failed = true;
+		cs_logf(session->log_target.cb, session->user, 1, "%s", "Opus decoder could not be opened; game audio is off");
+	}
+	else
+		session->audio_decoder.failed = false;
+}
+
+static void cs_session_audio_frame(uint8_t *buf, size_t buf_size, void *user)
+{
+	cs_session *session = user;
+	cs_audio_decoder *decoder = &session->audio_decoder;
+	if(!session->audio || decoder->failed || !decoder->codec || buf_size == 0)
+		return;
+	decoder->packet->data = buf;
+	decoder->packet->size = (int)buf_size;
+	if(avcodec_send_packet(decoder->codec, decoder->packet) < 0)
+		return;
+	while(avcodec_receive_frame(decoder->codec, decoder->frame) >= 0)
+	{
+		AVFrame *frame = decoder->frame;
+		int count = frame->nb_samples;
+		int channels = frame->ch_layout.nb_channels > 0 ? frame->ch_layout.nb_channels : 1;
+		if(count > decoder->mono_capacity)
+		{
+			av_free(decoder->mono);
+			decoder->mono = av_malloc_array((size_t)count, sizeof(float));
+			decoder->mono_capacity = decoder->mono ? count : 0;
+		}
+		if(decoder->mono)
+		{
+			/* Kanallar ortalanır; FFmpeg'in Opus çözücüsü düzlemsel (planar) float verir. */
+			for(int i = 0; i < count; i++)
+			{
+				float sum = 0.0f;
+				for(int c = 0; c < channels; c++)
+				{
+					if(frame->format == AV_SAMPLE_FMT_FLTP)
+						sum += ((const float *)frame->extended_data[c])[i];
+					else if(frame->format == AV_SAMPLE_FMT_FLT)
+						sum += ((const float *)frame->extended_data[0])[i * channels + c];
+					else if(frame->format == AV_SAMPLE_FMT_S16)
+						sum += ((const int16_t *)frame->extended_data[0])[i * channels + c] / 32768.0f;
+				}
+				decoder->mono[i] = sum / (float)channels;
+			}
+			session->audio(decoder->mono, count, frame->sample_rate, session->user);
+		}
+		av_frame_unref(frame);
+	}
+}
 
 static int cs_quit_reason(ChiakiQuitReason reason)
 {
@@ -611,6 +712,13 @@ CS_API cs_session *cs_session_start(const char *host, const uint8_t regist_key[0
 		const uint8_t account_id[8], int max_fps,
 		cs_frame_cb frame, cs_event_cb event, cs_log_cb log, void *user)
 {
+	return cs_session_start_with_audio(host, regist_key, morning, account_id, max_fps, frame, NULL, event, log, user);
+}
+
+CS_API cs_session *cs_session_start_with_audio(const char *host, const uint8_t regist_key[0x10], const uint8_t morning[0x10],
+		const uint8_t account_id[8], int max_fps,
+		cs_frame_cb frame, cs_audio_cb audio, cs_event_cb event, cs_log_cb log, void *user)
+{
 	if(!host || !regist_key || !morning || !account_id)
 		return NULL;
 
@@ -618,6 +726,7 @@ CS_API cs_session *cs_session_start(const char *host, const uint8_t regist_key[0
 	if(!session)
 		return NULL;
 	session->frame = frame;
+	session->audio = audio;
 	session->event = event;
 	session->user = user;
 	session->log_target.cb = log;
@@ -644,7 +753,8 @@ CS_API cs_session *cs_session_start(const char *host, const uint8_t regist_key[0
 	info.video_profile_auto_downgrade = true;
 	info.enable_keyboard = false;
 	info.enable_dualsense = false;
-	info.audio_video_disabled = CHIAKI_AUDIO_DISABLED;
+	/* Ses yalnız oyun sesi dinlenecekse istenir (0: ses ve görüntü açık). */
+	info.audio_video_disabled = audio ? (ChiakiDisableAudioVideo)0 : CHIAKI_AUDIO_DISABLED;
 	info.auto_regist = false;
 	info.holepunch_session = NULL;
 	info.rudp_sock = NULL;
@@ -662,6 +772,14 @@ CS_API cs_session *cs_session_start(const char *host, const uint8_t regist_key[0
 	}
 	chiaki_session_set_event_cb(&session->session, cs_session_event, session);
 	chiaki_session_set_video_sample_cb(&session->session, cs_session_video_sample, session);
+	if(audio)
+	{
+		ChiakiAudioSink sink;
+		sink.user = session;
+		sink.header_cb = cs_session_audio_header;
+		sink.frame_cb = cs_session_audio_frame;
+		chiaki_session_set_audio_sink(&session->session, &sink);
+	}
 
 	err = chiaki_session_start(&session->session);
 	if(err != CHIAKI_ERR_SUCCESS)
@@ -686,5 +804,6 @@ CS_API void cs_session_stop(cs_session *session)
 	chiaki_session_join(&session->session);
 	chiaki_session_fini(&session->session);
 	cs_decoder_fini(&session->decoder);
+	cs_audio_decoder_fini(&session->audio_decoder);
 	free(session);
 }

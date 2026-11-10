@@ -4481,6 +4481,118 @@
         }
       }
     },
+    "Listen to the game (experimental)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listen to the game (experimental)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oyunu dinle (deneysel)"
+          }
+        }
+      }
+    },
+    "Translate speech that has no subtitles": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translate speech that has no subtitles"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Altyazısı olmayan konuşmaları da çevir"
+          }
+        }
+      }
+    },
+    "The game sound is also received from the PS5 and speech is recognized on this computer (nothing is sent anywhere). When the game shows no subtitle for a line, its translation appears on the TV. The first time, a 190 MB speech model is downloaded. Takes effect the next time you start translating. If the TV sound goes quiet while this is on, turn it off.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The game sound is also received from the PS5 and speech is recognized on this computer (nothing is sent anywhere). When the game shows no subtitle for a line, its translation appears on the TV. The first time, a 190 MB speech model is downloaded. Takes effect the next time you start translating. If the TV sound goes quiet while this is on, turn it off."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oyunun sesi de PS5'ten alınır ve konuşmalar bu bilgisayarda yazıya çevrilir (hiçbir yere gönderilmez). Oyunun altyazı göstermediği konuşmaların çevirisi TV'de çıkar. İlk seferde 190 MB'lık konuşma modeli indirilir. Çeviriyi bir sonraki başlatışınızda devreye girer. Açıkken TV'nin sesi kesilirse kapatın."
+          }
+        }
+      }
+    },
+    "Downloading the speech model… {0:0}%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloading the speech model… {0:0}%"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konuşma modeli indiriliyor… %{0:0}"
+          }
+        }
+      }
+    },
+    "The speech model could not be downloaded. Check the internet connection and try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The speech model could not be downloaded. Check the internet connection and try again."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konuşma modeli indirilemedi. İnternet bağlantısını kontrol edip tekrar deneyin."
+          }
+        }
+      }
+    },
+    "Stop and start translating again for this to take effect.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop and start translating again for this to take effect."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devreye girmesi için çeviriyi durdurup yeniden başlatın."
+          }
+        }
+      }
+    },
+    "Ready. Game speech is listened to when you start translating.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ready. Game speech is listened to when you start translating."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hazır. Çeviriyi başlattığınızda oyunun sesi dinlenecek."
+          }
+        }
+      }
+    },
     "Instant subtitles": {
       "localizations": {
         "en": {

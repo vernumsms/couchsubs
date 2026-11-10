@@ -72,8 +72,13 @@ internal sealed class SerialQueue : IDisposable
 
 /// <summary>PS5'e (ikinci hesapla) Remote Play bağlantısı kurar ve görüntüyü kare kare verir.
 /// Ses kapalıdır, kol girdisi gönderilmez. Bağlantı koparsa kendiliğinden yeniden bağlanır.</summary>
-public sealed class StreamSession : IStreamSession
+public sealed class StreamSession : IStreamSession, IGameAudioSource
 {
+    /// <inheritdoc />
+    public bool ListenToAudio { get; set; }
+    /// <inheritdoc />
+    public event Action<float[], int>? AudioReceived;
+
     /// <summary>Saniyede en çok bu kadar kare BGRA'ya çevrilir (Mac'teki gibi).</summary>
     internal const int MaxFps = 20;
 
@@ -207,7 +212,7 @@ public sealed class StreamSession : IStreamSession
     private void OpenSession(int current)
     {
         if (!IsCurrent(current) || box is not null) return;
-        var started = SessionBox.Start(this, current, console, accountId, out var failure);
+        var started = SessionBox.Start(this, current, console, accountId, ListenToAudio, out var failure);
         if (started is null)
         {
             ScheduleReconnect(current, new DisconnectReason(DisconnectKind.Other, failure ?? "session could not be started"));
@@ -293,7 +298,8 @@ public sealed class StreamSession : IStreamSession
             handle = GCHandle.Alloc(this);
         }
 
-        public static unsafe SessionBox? Start(StreamSession owner, int generation, RegisteredConsole console, byte[] accountId, out string? failure)
+        public static unsafe SessionBox? Start(StreamSession owner, int generation, RegisteredConsole console, byte[] accountId,
+            bool listen, out string? failure)
         {
             var box = new SessionBox(owner, generation);
             failure = null;
@@ -305,12 +311,17 @@ public sealed class StreamSession : IStreamSession
                 delegate* unmanaged[Cdecl]<byte*, int, int, int, nint, void> frame = &OnFrame;
                 delegate* unmanaged[Cdecl]<int, int, byte*, nint, void> eventCallback = &OnEvent;
                 delegate* unmanaged[Cdecl]<int, byte*, nint, void> log = &OnLog;
+                delegate* unmanaged[Cdecl]<float*, int, int, nint, void> audio = &OnAudio;
                 fixed (byte* key = registKey)
                 fixed (byte* morningPointer = morning)
                 fixed (byte* account = accountId)
-                    box.native = NativeMethods.cs_session_start(console.Host, key, morningPointer, account, MaxFps,
-                                                                (nint)frame, (nint)eventCallback, (nint)log,
-                                                                GCHandle.ToIntPtr(box.handle));
+                    box.native = listen
+                        ? NativeMethods.cs_session_start_with_audio(console.Host, key, morningPointer, account, MaxFps,
+                                                                    (nint)frame, (nint)audio, (nint)eventCallback, (nint)log,
+                                                                    GCHandle.ToIntPtr(box.handle))
+                        : NativeMethods.cs_session_start(console.Host, key, morningPointer, account, MaxFps,
+                                                         (nint)frame, (nint)eventCallback, (nint)log,
+                                                         GCHandle.ToIntPtr(box.handle));
             }
             catch (Exception error)
             {
@@ -346,6 +357,17 @@ public sealed class StreamSession : IStreamSession
                     box.owner.delivery.Offer((nint)bgra, width, height, stride);
             }
             catch (Exception error) { RemotePlayLog.Write(0, $"frame: {error.Message}"); }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static unsafe void OnAudio(float* samples, int count, int rate, nint user)
+        {
+            try
+            {
+                if (From(user) is { } box && samples != null && count > 0 && box.owner.AudioReceived is { } handler)
+                    handler(new ReadOnlySpan<float>(samples, count).ToArray(), rate);
+            }
+            catch (Exception error) { RemotePlayLog.Write(0, $"audio: {error.Message}"); }
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]

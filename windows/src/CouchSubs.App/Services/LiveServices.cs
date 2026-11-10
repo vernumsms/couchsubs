@@ -39,6 +39,9 @@ public sealed class LiveServices : IAppServices
 
     public void WriteDiagnostic(string kind, long milliseconds, string text) => AiLog.Write(kind, milliseconds, text, null);
 
+    public IGameSpeechModel? GameSpeech { get; } = new WhisperSpeechModel(Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CouchSubs", "models", "whisper"));
+
     /// <summary>Yapay zekâ çevirisinin yerel günlüğü (kalite ve gecikmeyi incelemek için).</summary>
     private static readonly TranslationLog AiLog = new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CouchSubs", "ceviri.log"));

@@ -741,6 +741,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             var stream = services.MakeStream(console, accountId);
             stream.StateChanged += state => post(() => SessionStateChanged(state));
             stream.FrameReceived += HandleFrame;
+            if (stream is IGameAudioSource audio && settings.ListenToGame && GameSpeechInstalled) StartListening(audio);
             stream.Start();
             session = stream;
 
@@ -764,6 +765,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
 
     public void Stop()
     {
+        StopListening();
         session?.Stop();
         session?.Dispose();
         session = null;
@@ -1201,6 +1203,84 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public bool DubbingDownloading { get => dubbingDownloading; private set => Set(ref dubbingDownloading, value); }
     public double DubbingProgress { get => dubbingProgress; private set => Set(ref dubbingProgress, value); }
     public string? DubbingError { get => dubbingError; private set => Set(ref dubbingError, value); }
+
+    // --- Oyun sesini dinleme (deneysel) ---
+
+    private CancellationTokenSource? listenWork;
+
+    public bool GameSpeechAvailable => services.GameSpeech is not null;
+    public bool GameSpeechInstalled => services.GameSpeech?.IsInstalled == true;
+    public long GameSpeechDownloadBytes => services.GameSpeech?.DownloadBytes ?? 0;
+
+    /// <summary>Konuşma tanıma modelini indirir (ilk kullanımda bir kez, ~190 MB).</summary>
+    public async Task DownloadGameSpeechAsync(IProgress<double> progress)
+    {
+        if (services.GameSpeech is not { } model || model.IsInstalled) return;
+        await Task.Run(() => model.DownloadAsync(progress, CancellationToken.None));
+        Changed(nameof(GameSpeechInstalled));
+    }
+
+    /// <summary>
+    /// PS5'ten oyun sesi istenir; ses konuşma parçalarına bölünür, Whisper yazıya çevirir. Oyun ekranında altyazı
+    /// yoksa duyulan konuşma çevrilip TV'de gösterilir. Model yüklenemezse sessizce kapalı kalır.
+    /// </summary>
+    private void StartListening(IGameAudioSource audio)
+    {
+        if (services.GameSpeech is not { } model) return;
+        ISpeechRecognizer recognizer;
+        try
+        {
+            recognizer = model.CreateRecognizer();
+        }
+        catch (Exception error)
+        {
+            services.WriteDiagnostic("ses-dinleme-acilamadi: " + error.Message, 0, "");
+            return;
+        }
+        audio.ListenToAudio = true;
+        var work = new CancellationTokenSource();
+        listenWork = work;
+        // Tanıma yetişemezse en eski parçalar atılır: gecikmiş konuşmanın çevirisi işe yaramaz.
+        var segments = System.Threading.Channels.Channel.CreateBounded<SpeechSegment>(
+            new System.Threading.Channels.BoundedChannelOptions(2) { FullMode = System.Threading.Channels.BoundedChannelFullMode.DropOldest });
+        var segmenter = new SpeechSegmenter(segment => segments.Writer.TryWrite(segment));
+        var feedGate = new object();
+        audio.AudioReceived += (samples, rate) =>
+        {
+            if (work.IsCancellationRequested) return;
+            lock (feedGate) segmenter.Feed(samples, rate);
+        };
+        var worker = Task.Run(async () =>
+        {
+            try
+            {
+                await foreach (var segment in segments.Reader.ReadAllAsync(work.Token))
+                {
+                    var clock = System.Diagnostics.Stopwatch.StartNew();
+                    var text = await recognizer.TranscribeAsync(segment.Samples, work.Token);
+                    services.WriteDiagnostic(text is null ? "duyulan-bos" : "duyulan", clock.ElapsedMilliseconds,
+                        $"{segment.Samples.Length / (double)SpeechSegmenter.Rate:0.0} sn ses{(text is null ? "" : " => " + text)}");
+                    if (text is not null && pipeline is { } current) await current.ShowHeardAsync(text, segment.StartedAt);
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception error)
+            {
+                services.WriteDiagnostic("ses-dinleme-hatasi: " + error.Message, 0, "");
+            }
+        });
+        // Model, son tanıma bitince bırakılır (tanıma sürerken bırakılırsa yerel kitaplık çöker).
+        listenWorker = worker.ContinueWith(_ => recognizer.Dispose(), TaskScheduler.Default);
+    }
+
+    private Task? listenWorker;
+
+    private void StopListening()
+    {
+        listenWork?.Cancel();
+        listenWork = null;
+        listenWorker = null;
+    }
 
     /// <summary>Ses modelini indirir (ilk kullanımda bir kez, ~440 MB).</summary>
     public async Task DownloadDubbingAsync()

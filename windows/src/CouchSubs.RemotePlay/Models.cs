@@ -79,3 +79,12 @@ public interface IStreamSession : IDisposable
     /// <summary>Bilgisayar uykudan uyandığında ya da ağ değiştiğinde çağrılır.</summary>
     void ReconnectNow();
 }
+
+/// <summary>Oyun sesini de verebilen oturum (altyazısız konuşmaları dinlemek için).</summary>
+public interface IGameAudioSource
+{
+    /// <summary>Açıksa bir sonraki bağlantıda PS5'ten ses de istenir. Start'tan önce ayarlanmalı.</summary>
+    bool ListenToAudio { get; set; }
+    /// <summary>Tek kanallı ses örnekleri ve örnekleme hızı (Hz). Ağ iş parçacığında çağrılır; işleyici hızlı olmalı.</summary>
+    event Action<float[], int>? AudioReceived;
+}

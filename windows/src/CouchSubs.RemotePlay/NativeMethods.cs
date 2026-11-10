@@ -56,6 +56,12 @@ internal static unsafe partial class NativeMethods
     internal static partial nint cs_session_start(string host, byte* registKey, byte* morning, byte* accountId, int maxFps,
                                                   nint frame, nint eventCallback, nint log, nint user);
 
+    /// <param name="audio">void (*)(const float *samples, int count, int rate, void *user); 0 ise ses istenmez.</param>
+    [LibraryImport(Library, StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial nint cs_session_start_with_audio(string host, byte* registKey, byte* morning, byte* accountId, int maxFps,
+                                                             nint frame, nint audio, nint eventCallback, nint log, nint user);
+
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void cs_session_stop(nint session);

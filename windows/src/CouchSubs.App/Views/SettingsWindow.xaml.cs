@@ -52,6 +52,8 @@ public partial class SettingsWindow : Window
         AiModel.SelectedItem = AiModel.Items.Cast<ComboBoxItem>().FirstOrDefault(item => (string)item.Tag == settings.AiModel)
                                ?? AiModel.Items[0];
         InstantOn.IsChecked = settings.InstantSubtitles;
+        ListenOn.IsChecked = settings.ListenToGame;
+        ListenCard.Visibility = controller.GameSpeechAvailable ? Visibility.Visible : Visibility.Collapsed;
         GameName.Text = settings.GameName;
         GameNotes.Text = settings.GameNotes;
         loading = false;
@@ -108,6 +110,38 @@ public partial class SettingsWindow : Window
         controller.RemoveAiKey();
         AiStatus.Visibility = Visibility.Collapsed;
         ShowAi();
+    }
+
+    private async void OnListenToggle(object sender, RoutedEventArgs e)
+    {
+        if (loading) return;
+        var on = ListenOn.IsChecked == true;
+        if (on && !controller.GameSpeechInstalled)
+        {
+            ListenOn.IsEnabled = false;
+            ListenStatus.Visibility = Visibility.Visible;
+            try
+            {
+                await controller.DownloadGameSpeechAsync(new Progress<double>(value =>
+                    ListenStatus.Text = string.Format(Localizer.Current["Downloading the speech model… {0:0}%"], value * 100)));
+            }
+            catch (Exception error) when (error is System.Net.Http.HttpRequestException or System.IO.IOException or System.IO.InvalidDataException
+                                              or TaskCanceledException or UnauthorizedAccessException)
+            {
+                ListenStatus.Text = Localizer.Current["The speech model could not be downloaded. Check the internet connection and try again."];
+                loading = true;
+                ListenOn.IsChecked = false;
+                loading = false;
+                ListenOn.IsEnabled = true;
+                return;
+            }
+            ListenOn.IsEnabled = true;
+        }
+        Update(s => s with { ListenToGame = on });
+        ListenStatus.Visibility = Visibility.Visible;
+        ListenStatus.Text = controller.IsRunning
+            ? Localizer.Current["Stop and start translating again for this to take effect."]
+            : on ? Localizer.Current["Ready. Game speech is listened to when you start translating."] : "";
     }
 
     private void OnGameChanged(object sender, RoutedEventArgs e)

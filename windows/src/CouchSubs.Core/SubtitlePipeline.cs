@@ -81,6 +81,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
 
         lock (gate)
         {
+            if (reading.Text.Length > 0) subtitleSeenAt = Environment.TickCount64;
             var action = stabilizer.Feed(reading.Text);
             switch (action.Kind)
             {
@@ -134,6 +135,54 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             if (pending.Length == 0) return;
             await Task.WhenAll(pending);
         }
+    }
+
+    // --- Oyun sesinden duyulan konuşmalar ---
+
+    /// <summary>Oyun ekranında en son altyazı görülen an.</summary>
+    private long subtitleSeenAt = long.MinValue / 2;
+
+    /// <summary>
+    /// Oyun sesinde duyulan, altyazısı olmayan konuşmayı çevirip gösterir. Oyun bu konuşmanın altyazısını gösterdiyse
+    /// (konuşma sırasında ya da hemen önce ekranda altyazı varsa) hiçbir şey yapılmaz: altyazı zaten çevriliyor.
+    /// </summary>
+    /// <param name="startedAt">Konuşmanın başladığı an (Environment.TickCount64).</param>
+    public async Task ShowHeardAsync(string english, long startedAt)
+    {
+        int number, current;
+        lock (gate)
+        {
+            var now = Environment.TickCount64;
+            if (subtitleSeenAt >= startedAt - 1500 || lineOnScreen is not null) return;
+            var key = TextMatch.Normalize(english);
+            if (key.Length == 0 || FindRecent(key, now) is { } seen && now - seen.SeenAt <= RecentMs) return;
+            recent.Add(new RecentLine { Key = key, SeenAt = now });
+            if (recent.Count > 32) recent.RemoveAt(0);
+            number = ++lastRequested;
+            current = session;
+        }
+        string translated;
+        try
+        {
+            translated = await translator.TranslateAsync(english);
+        }
+        catch (TranslatorException)
+        {
+            return;
+        }
+        if (translated.Length == 0) return;
+        lock (gate)
+        {
+            // Bu arada oyunda altyazı belirdiyse ya da daha yeni bir satır gösterildiyse duyulan metin gösterilmez.
+            if (current != session || number <= lastShown || lineOnScreen is not null) return;
+            lastShown = number;
+            lastShownAt = Environment.TickCount64;
+            onScreenText = null;
+            sender.SendSubtitle(translated, ReadingTime(translated), null);
+            LastPair = (english, translated);
+            Remember(english, translated);
+        }
+        PairShown?.Invoke(english, translated);
     }
 
     // --- Altyazının ekranda kalma süresi ---

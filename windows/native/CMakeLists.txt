@@ -32,7 +32,7 @@ set(CURL_DISABLE_LDAP ON CACHE BOOL "" FORCE)
 add_subdirectory("${CHIAKI_SOURCE_DIR}" chiaki EXCLUDE_FROM_ALL)
 
 # FFmpeg: Windows'ta kaynaktan derlenmiş statik kütüphaneler (LGPL; yalnız h264 + swscale).
-foreach(lib avcodec swscale avutil)
+foreach(lib avcodec swresample swscale avutil)
 	find_library(FFMPEG_${lib} NAMES ${lib} HINTS "${FFMPEG_PREFIX}/lib" NO_DEFAULT_PATH)
 	if(NOT FFMPEG_${lib})
 		find_library(FFMPEG_${lib} NAMES ${lib} REQUIRED)
@@ -41,7 +41,7 @@ endforeach()
 find_path(FFMPEG_INCLUDE_DIR libavcodec/avcodec.h HINTS "${FFMPEG_PREFIX}/include")
 
 add_library(couchsubs_deps INTERFACE)
-target_link_libraries(couchsubs_deps INTERFACE chiaki-lib ${FFMPEG_avcodec} ${FFMPEG_swscale} ${FFMPEG_avutil})
+target_link_libraries(couchsubs_deps INTERFACE chiaki-lib ${FFMPEG_avcodec} ${FFMPEG_swresample} ${FFMPEG_swscale} ${FFMPEG_avutil})
 target_include_directories(couchsubs_deps INTERFACE "${FFMPEG_INCLUDE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}")
 if(WIN32)
 	# Statik OpenSSL, libevent, curl (Schannel) ve FFmpeg'in Windows bağımlılıkları; hepsi sistem DLL'i.

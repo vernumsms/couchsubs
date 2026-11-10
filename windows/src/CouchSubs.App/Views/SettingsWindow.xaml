@@ -127,6 +127,16 @@
                     </StackPanel>
                 </c:Card>
 
+                <c:Card x:Name="ListenCard" Title="{t:T 'Listen to the game (experimental)'}" Margin="0,16,0,0">
+                    <StackPanel>
+                        <CheckBox x:Name="ListenOn" Content="{t:T 'Translate speech that has no subtitles'}" Foreground="{DynamicResource textPrimaryBrush}"
+                                  Checked="OnListenToggle" Unchecked="OnListenToggle" />
+                        <TextBlock Style="{StaticResource HintText}" Margin="0,8,0,0"
+                                   Text="{t:T 'The game sound is also received from the PS5 and speech is recognized on this computer (nothing is sent anywhere). When the game shows no subtitle for a line, its translation appears on the TV. The first time, a 190 MB speech model is downloaded. Takes effect the next time you start translating. If the TV sound goes quiet while this is on, turn it off.'}" />
+                        <TextBlock x:Name="ListenStatus" Style="{StaticResource HintText}" Margin="0,8,0,0" Visibility="Collapsed" />
+                    </StackPanel>
+                </c:Card>
+
                 <c:Card Title="{t:T 'Instant subtitles'}" Margin="0,16,0,0">
                     <StackPanel>
                         <CheckBox x:Name="InstantOn" Content="{t:T 'Follow the game line by line'}" Foreground="{DynamicResource textPrimaryBrush}"

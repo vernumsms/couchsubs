@@ -68,6 +68,9 @@ enum {
 };
 typedef void (*cs_event_cb)(int event, int quit_reason, const char *reason_text, void *user);
 
+/* Oyun sesi: tek kanala indirilmiş 32 bit kayan noktalı örnekler (rate Hz). Bellek yalnız geri çağrı süresince geçerlidir. */
+typedef void (*cs_audio_cb)(const float *samples, int count, int rate, void *user);
+
 typedef struct cs_session cs_session;
 
 /* Ses ve kol girdisi kapalı, 1080p/30 H.264 akışı açar. Her kare çözülür; en çok max_fps kez
@@ -76,6 +79,12 @@ typedef struct cs_session cs_session;
 CS_API cs_session *cs_session_start(const char *host, const uint8_t regist_key[0x10], const uint8_t morning[0x10],
                                     const uint8_t account_id[8], int max_fps,
                                     cs_frame_cb frame, cs_event_cb event, cs_log_cb log, void *user);
+
+/* cs_session_start gibi; audio NULL değilse oyunun sesi de istenir, Opus çözülüp tek kanal olarak audio'ya verilir
+ * (oyun sesini dinleyip altyazısız konuşmaları çevirmek için). */
+CS_API cs_session *cs_session_start_with_audio(const char *host, const uint8_t regist_key[0x10], const uint8_t morning[0x10],
+                                    const uint8_t account_id[8], int max_fps,
+                                    cs_frame_cb frame, cs_audio_cb audio, cs_event_cb event, cs_log_cb log, void *user);
 
 /* Oturumu durdurur, iş parçacıklarını bekler ve belleği bırakır. Geri çağrı içinden çağrılmamalı. */
 CS_API void cs_session_stop(cs_session *session);

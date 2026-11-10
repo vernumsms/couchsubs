@@ -2,7 +2,11 @@ CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Ori
 
 **İndir:** [Windows (kurulum)](https://github.com/vernumsms/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)
 
-**Bu sürümde yeni (claude.11): çeviri hafızası, oyun bilgisi, doğru süre**
+**Bu sürümde yeni (claude.12): oyunu dinleme (deneysel)**
+
+- **Altyazısı olmayan konuşmalar da çevrilir.** Ayarlar → "Oyunu dinle (deneysel)": oyunun sesi de PS5'ten alınır, konuşmalar bu bilgisayarda Whisper ile yazıya çevrilir (hiçbir yere gönderilmez). Oyun o konuşmanın altyazısını göstermediyse Türkçesi TV'de çıkar. İlk açılışta 190 MB'lık model indirilir. Varsayılan kapalı.
+
+**claude.11'de gelenler: çeviri hafızası, oyun bilgisi, doğru süre**
 
 - **Kalıcı çeviri hafızası.** Claude'un çevirdiği her satır oyuna göre diske kaydedilir (%LOCALAPPDATA%\CouchSubs\hafiza). Bölümü baştan alınca, ölüp yeniden doğunca ya da uygulamayı kapatıp açınca aynı satırın Türkçesi beklemeden ve ücretsiz gelir.
 - **Oyun bilgisi ve sözlük.** Ayarlar → "Oynadığınız oyun": oyunun adını yazınca Claude karakterleri ve terimleri baştan bilir. Notlar kutusuna sözlük yazılabilir ("Ghost = çevirme", "Price erkek").
