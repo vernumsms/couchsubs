@@ -209,8 +209,15 @@ public partial class SettingsWindow : Window
     private void OnLink(object sender, RequestNavigateEventArgs e) =>
         Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
 
-    public static void Open(Window? owner, AppController controller) =>
-        new SettingsWindow(controller) { Owner = owner }.ShowDialog();
+    /// <summary>Sekmelerin sırası: Altyazı, Çeviri, Oyun, Dublaj, Gelişmiş.</summary>
+    public const int GameTab = 2;
+
+    public static void Open(Window? owner, AppController controller, int tab = 0)
+    {
+        var window = new SettingsWindow(controller) { Owner = owner };
+        window.Tabs.SelectedIndex = tab;
+        window.ShowDialog();
+    }
 
     private void Update(Func<UserSettings, UserSettings> change)
     {

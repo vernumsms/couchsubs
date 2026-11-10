@@ -9,7 +9,7 @@
         android:allowBackup="false"
         android:banner="@drawable/banner"
         android:icon="@mipmap/icon"
-        android:label="CouchSubs"
+        android:label="Altyazı+"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
         android:usesCleartextTraffic="true">
         <activity

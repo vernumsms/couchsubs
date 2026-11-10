@@ -6,7 +6,7 @@
     <content src="index.html"/>
     <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
     <icon src="icon.png"/>
-    <name>CouchSubs</name>
+    <name>Altyazı+</name>
     <author>Enmera</author>
     <license>AGPL-3.0-only</license>
     <access origin="*" subdomains="true"/>

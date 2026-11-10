@@ -2,7 +2,7 @@
 <Window x:Class="CouchSubs.App.ShellWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="CouchSubs" Icon="Assets/CouchSubs.ico"
+        Title="Altyazı+" Icon="Assets/CouchSubs.ico"
         Width="{DynamicResource size.windowWidth}" Height="{DynamicResource size.windowHeight}"
         MinWidth="{DynamicResource size.windowWidth}" MinHeight="{DynamicResource size.windowHeight}"
         Background="{DynamicResource backgroundBrush}" Foreground="{DynamicResource textPrimaryBrush}" WindowStartupLocation="CenterScreen">

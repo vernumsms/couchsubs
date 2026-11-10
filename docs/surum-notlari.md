@@ -1,8 +1,15 @@
-CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Orijinal proje: [yorulmazsinan/couchsubs](https://github.com/yorulmazsinan/couchsubs).
+**Altyazı+**: CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Orijinal proje: [yorulmazsinan/couchsubs](https://github.com/yorulmazsinan/couchsubs).
 
 **İndir:** [Windows (kurulum)](https://github.com/vernumsms/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)
 
-**Bu sürümde yeni (claude.13): tekrarsız ve titremeyen altyazı**
+**Bu sürümde yeni (claude.14): Altyazı+ — yeni ad, yeni görünüm**
+
+- **Uygulamanın adı artık Altyazı+.** Yeni logo, koyu başlık çubuğu. Ayarlar, Claude anahtarı ve çeviri hafızası yerinde kalır.
+- **TV'de modern altyazı.** Yumuşak köşeli şerit, ince çerçeve, konuşmacı adı sarı ("Kal:", "Park:"). Ayarlar → Altyazı → Görünüm'den eski düz kutuya dönülebilir. TV uygulaması 0.9.8.
+- **Yenilenen ana ekran.** Oynanan oyunun adı, Dublaj ve Oyunu dinle için hızlı düğmeler, bu oturumda gösterilen satır sayısı.
+- **Sekmeli Ayarlar.** Altyazı, Çeviri, Oyun, Dublaj, Gelişmiş. Açılır listeler ve onay kutuları koyu temaya uygun.
+
+**claude.13'te gelenler: tekrarsız ve titremeyen altyazı**
 
 - **Aynı altyazı iki kez çıkmaz.** Oyun önceki repliği ekranda tutup yenisini altına ekliyor; TV'de artık yalnız yeni satır çıkıyor.
 - **Altyazı önce çıkıp hemen değişmez.** Claude'un çevirisi 2,5 saniye içinde gelirse yerel (hızlı) çeviri hiç gösterilmiyor; yalnız bağlantı yavaşsa önce yerel çeviri çıkıp sonra düzeliyor.

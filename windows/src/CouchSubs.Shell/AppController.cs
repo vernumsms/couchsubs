@@ -46,6 +46,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     private int tvClients;
     private string lastSource = "";
     private string lastTranslation = "";
+    private int sessionLines;
     private TranslatorStatus translatorStatus = TranslatorStatus.Ready;
     private bool ocrMissing;
     private Frame? lastFrame;
@@ -120,6 +121,24 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public string TvStatusText => tvClients > 0 ? text["Connected"] : text["Waiting for the TV app"];
     public string LastSource { get => lastSource; private set => Set(ref lastSource, value); }
     public string LastTranslation { get => lastTranslation; private set => Set(ref lastTranslation, value); }
+    /// <summary>Bu oturumda TV'ye gönderilen çeviri sayısı (ana ekranda).</summary>
+    public int SessionLines { get => sessionLines; private set => Set(ref sessionLines, value); }
+    /// <summary>Ayarlar'da yazılan oyun adı (ana ekranda gösterilir).</summary>
+    public string GameName => string.IsNullOrWhiteSpace(settings.GameName) ? text["Set the game in Settings"] : settings.GameName;
+
+    /// <summary>Ana ekrandaki hızlı düğme: dublaj açık mı. Çeviri sürerken de açılıp kapatılabilir.</summary>
+    public bool DubbingOn
+    {
+        get => settings.Dubbing.Enabled;
+        set => Settings = settings with { Dubbing = settings.Dubbing with { Enabled = value } };
+    }
+
+    /// <summary>Ana ekrandaki hızlı düğme: oyunu dinleme. Bir sonraki "Çeviriyi başlat"ta devreye girer.</summary>
+    public bool ListenOn
+    {
+        get => settings.ListenToGame;
+        set => Settings = settings with { ListenToGame = value };
+    }
     public TranslatorStatus TranslatorStatus { get => translatorStatus; private set => Set(ref translatorStatus, value); }
     /// <summary>Bilgisayarda yazı tanıma dili yok; ayarlardan eklenmesi gerekir.</summary>
     public bool OcrMissing { get => ocrMissing; private set => Set(ref ocrMissing, value); }
@@ -144,7 +163,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         set
         {
             var old = settings;
-            if (!Set(ref settings, value)) return;
+            if (!Set(ref settings, value, [nameof(DubbingOn), nameof(ListenOn), nameof(GameName)])) return;
             settingsStore.Save(value);
             server.SendStyle(value.Style);
             if (old.Dubbing != value.Dubbing) DubbingSettingsChanged(old.Dubbing);
@@ -735,6 +754,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             try { await StartServerAsync(); } catch { /* port açılamadıysa TV durumu "bekleniyor" kalır */ }
             server.SendStyle(settings.Style);
             SubtitlesPaused = false;
+            SessionLines = 0;
             MakePipeline();
             if (settings.Dubbing.Enabled && DubbingInstalled) MakeDubber()?.Prepare();
 
@@ -848,6 +868,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             {
                 LastSource = source;
                 LastTranslation = translation;
+                SessionLines++;
                 if (box is not null) lastSubtitleBox = box;
             });
         };

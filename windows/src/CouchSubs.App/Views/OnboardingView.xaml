@@ -13,7 +13,7 @@
                         <!-- Koyu temada logonun kenarı zeminden ayrılsın. -->
                         <Border BorderBrush="{DynamicResource borderBrush}" BorderThickness="1" CornerRadius="7.2" />
                     </Grid>
-                    <TextBlock Text="CouchSubs" Style="{StaticResource HeadlineText}" Margin="12,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock Text="Altyazı+" Style="{StaticResource HeadlineText}" Margin="12,0,0,0" VerticalAlignment="Center" />
                 </StackPanel>
                 <TextBlock x:Name="Counter" Style="{StaticResource HintText}" HorizontalAlignment="Right" VerticalAlignment="Center" />
             </Grid>

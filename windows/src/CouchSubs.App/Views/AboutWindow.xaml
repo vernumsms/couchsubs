@@ -11,13 +11,17 @@
                         <!-- Koyu temada logonun kenarı zeminden ayrılsın. -->
                         <Border BorderBrush="{DynamicResource borderBrush}" BorderThickness="1" CornerRadius="19.9" />
                     </Grid>
-        <TextBlock Text="CouchSubs" Style="{StaticResource TitleText}" HorizontalAlignment="Center" Margin="0,12,0,0" />
+        <TextBlock Text="Altyazı+" Style="{StaticResource TitleText}" HorizontalAlignment="Center" Margin="0,12,0,0" />
         <TextBlock x:Name="Version" Style="{StaticResource HintText}" HorizontalAlignment="Center" Margin="0,4,0,12" />
         <TextBlock Text="{t:T 'Free and open source under the GNU AGPL-3.0 license.'}" TextAlignment="Center" />
+        <!-- Lisans gereği: bu uygulama CouchSubs'ın değiştirilmiş sürümüdür; özgün proje ve kaynak kodu belirtilir. -->
+        <TextBlock Text="{t:T 'Based on CouchSubs by Sinan Yorulmaz, with Claude translation added.'}" Style="{StaticResource SecondaryText}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0" />
         <TextBlock Text="{t:T 'Remote Play connection by chiaki-ng (AGPL-3.0). Thanks to its developers.'}" Style="{StaticResource SecondaryText}" TextAlignment="Center" Margin="0,12,0,0" />
         <TextBlock Text="{t:T 'Translation model: OPUS-MT, University of Helsinki (CC BY 4.0).'}" Style="{StaticResource SecondaryText}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
         <TextBlock TextAlignment="Center" Margin="0,12,0,0">
-            <Hyperlink NavigateUri="https://github.com/yorulmazsinan/couchsubs" RequestNavigate="OnLink"><Run Text="{t:T 'Source code'}" /></Hyperlink>
+            <Hyperlink NavigateUri="https://github.com/vernumsms/couchsubs" RequestNavigate="OnLink"><Run Text="{t:T 'Source code'}" /></Hyperlink>
+            <Run Text="  ·  " />
+            <Hyperlink NavigateUri="https://github.com/yorulmazsinan/couchsubs" RequestNavigate="OnLink">CouchSubs</Hyperlink>
             <Run Text="  ·  " />
             <Hyperlink NavigateUri="https://github.com/chiaki-ng/chiaki-ng" RequestNavigate="OnLink">chiaki-ng</Hyperlink>
         </TextBlock>

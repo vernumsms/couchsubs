@@ -252,7 +252,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs'ın yeni sürümü çıktı: %@"
+            "value": "Altyazı+'nın yeni sürümü çıktı: %@"
           }
         }
       }
@@ -284,7 +284,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs Hakkında"
+            "value": "Altyazı+ Hakkında"
           }
         }
       }
@@ -348,7 +348,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs TV uygulaması kurulu bir LG TV"
+            "value": "Altyazı+ TV uygulaması kurulu bir LG TV"
           }
         }
       }
@@ -509,6 +509,166 @@
           "stringUnit": {
             "state": "translated",
             "value": "Klasik kutu"
+          }
+        }
+      }
+    },
+    "Based on CouchSubs by Sinan Yorulmaz, with Claude translation added.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Based on CouchSubs by Sinan Yorulmaz, with Claude translation added."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sinan Yorulmaz'ın CouchSubs uygulaması temel alınmış, Claude çevirisi eklenmiştir."
+          }
+        }
+      }
+    },
+    "Translation": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translation"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çeviri"
+          }
+        }
+      }
+    },
+    "Game": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Game"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oyun"
+          }
+        }
+      }
+    },
+    "Dubbing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dubbing"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dublaj"
+          }
+        }
+      }
+    },
+    "Advanced": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Advanced"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gelişmiş"
+          }
+        }
+      }
+    },
+    "Listen to the game": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listen to the game"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oyunu dinle"
+          }
+        }
+      }
+    },
+    "This session": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This session"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu oturumda gösterilen satır"
+          }
+        }
+      }
+    },
+    "Turkish voice over (download it in Settings first)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turkish voice over (download it in Settings first)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Türkçe seslendirme (önce Ayarlar'dan indirin)"
+          }
+        }
+      }
+    },
+    "Also translate speech without subtitles. Takes effect the next time you start.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Also translate speech without subtitles. Takes effect the next time you start."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Altyazısı olmayan konuşmaları da çevirir. Çeviriyi bir sonraki başlatışınızda devreye girer."
+          }
+        }
+      }
+    },
+    "Set the game in Settings": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set the game in Settings"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oyunu Ayarlar'dan yazın"
           }
         }
       }
@@ -716,7 +876,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs"
+            "value": "Altyazı+"
           }
         }
       }
@@ -732,7 +892,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs TV uygulaması"
+            "value": "Altyazı+ TV uygulaması"
           }
         }
       }
@@ -748,7 +908,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs, geliştirici modunun süresini her kullanışınızda kendisi uzatır."
+            "value": "Altyazı+, geliştirici modunun süresini her kullanışınızda kendisi uzatır."
           }
         }
       }
@@ -764,7 +924,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs, Sony Interactive Entertainment ile bağlantılı değildir. PlayStation ve PS5, Sony Interactive Entertainment Inc.'in ticari markalarıdır."
+            "value": "Altyazı+, Sony Interactive Entertainment ile bağlantılı değildir. PlayStation ve PS5, Sony Interactive Entertainment Inc.'in ticari markalarıdır."
           }
         }
       }
@@ -780,7 +940,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs, PS5 oyunlarınızın İngilizce altyazısını okur ve Türkçesini TV'de oyunun üstünde gösterir. Siz TV'de kendi kolunuzla oynamaya devam edersiniz."
+            "value": "Altyazı+, PS5 oyunlarınızın İngilizce altyazısını okur ve Türkçesini TV'de oyunun üstünde gösterir. Siz TV'de kendi kolunuzla oynamaya devam edersiniz."
           }
         }
       }
@@ -796,7 +956,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs çeviriyi bu bilgisayarda, internetsiz yapar. İngilizce–Türkçe model (yaklaşık 530 MB) bir kez indirilir ve bu bilgisayarda kalır."
+            "value": "Altyazı+ çeviriyi bu bilgisayarda, internetsiz yapar. İngilizce–Türkçe model (yaklaşık 530 MB) bir kez indirilir ve bu bilgisayarda kalır."
           }
         }
       }
@@ -812,7 +972,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs oyunu Uzaktan Oynatma ile izler. Kendi hesabınızı kullansaydı PS5 kolunuzu kapatırdı. İkinci bir hesapla oyununuz hiç bölünmez."
+            "value": "Altyazı+ oyunu Uzaktan Oynatma ile izler. Kendi hesabınızı kullansaydı PS5 kolunuzu kapatırdı. İkinci bir hesapla oyununuz hiç bölünmez."
           }
         }
       }
@@ -828,7 +988,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs TV'nize örnek bir altyazı gönderecek. Ekranın altında, oyunun üstünde görünmeli."
+            "value": "Altyazı+ TV'nize örnek bir altyazı gönderecek. Ekranın altında, oyunun üstünde görünmeli."
           }
         }
       }
@@ -924,7 +1084,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Geliştirici modu: %lld saat kaldı. CouchSubs süreyi her kullanışınızda kendisi uzatır."
+            "value": "Geliştirici modu: %lld saat kaldı. Altyazı+ süreyi her kullanışınızda kendisi uzatır."
           }
         }
       }
@@ -1100,7 +1260,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Çevrilecek alanı çizin (ör. görev paneli). Oynarken kendi tuşuna (Num 1, 2 ya da 3) basınca bu alan bir kez okunup çevrilir. Sonucun nerede görüneceğini seçin. CouchSubs arka plandayken de çalışır."
+            "value": "Çevrilecek alanı çizin (ör. görev paneli). Oynarken kendi tuşuna (Num 1, 2 ya da 3) basınca bu alan bir kez okunup çevrilir. Sonucun nerede görüneceğini seçin. Altyazı+ arka plandayken de çalışır."
           }
         }
       }
@@ -1260,7 +1420,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Windows, CouchSubs'ın ağı kullanmasına izin verip vermeyeceğinizi sorarsa özel ağlar için izin verin."
+            "value": "Windows, Altyazı+'nın ağı kullanmasına izin verip vermeyeceğinizi sorarsa özel ağlar için izin verin."
           }
         }
       }
@@ -1276,7 +1436,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Görmüyorsanız CouchSubs TV uygulamasının açık olduğundan emin olun ve TV'yi yeniden bağlayın."
+            "value": "Görmüyorsanız Altyazı+ TV uygulamasının açık olduğundan emin olun ve TV'yi yeniden bağlayın."
           }
         }
       }
@@ -1340,7 +1500,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs TV uygulamasını rehberdeki gibi bu TV'ye kurup açın. Uygulama bu bilgisayarı kendisi bulur."
+            "value": "Altyazı+ TV uygulamasını rehberdeki gibi bu TV'ye kurup açın. Uygulama bu bilgisayarı kendisi bulur."
           }
         }
       }
@@ -2428,7 +2588,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Az önce açtığınız ikinci hesapla PlayStation Network'e giriş yapın. Şifreniz doğrudan Sony'ye gider; CouchSubs yalnızca hesap kimliğini saklar."
+            "value": "Az önce açtığınız ikinci hesapla PlayStation Network'e giriş yapın. Şifreniz doğrudan Sony'ye gider; Altyazı+ yalnızca hesap kimliğini saklar."
           }
         }
       }
@@ -2828,7 +2988,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "PS5 bu hesabı tanımadı. Kodu, CouchSubs'ta giriş yaptığınız hesapla oturum açmış PS5 kullanıcısından alın ya da bir önceki adımda o kullanıcının hesabıyla yeniden giriş yapın."
+            "value": "PS5 bu hesabı tanımadı. Kodu, Altyazı+'da giriş yaptığınız hesapla oturum açmış PS5 kullanıcısından alın ya da bir önceki adımda o kullanıcının hesabıyla yeniden giriş yapın."
           }
         }
       }
@@ -2924,7 +3084,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "TV uygulaması kurulu değil. Geliştirici modu açılınca CouchSubs kendisi kurar."
+            "value": "TV uygulaması kurulu değil. Geliştirici modu açılınca Altyazı+ kendisi kurar."
           }
         }
       }
@@ -2940,7 +3100,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "TV uygulaması kurulu değil. Geliştirici modu açılınca CouchSubs kendisi kurar."
+            "value": "TV uygulaması kurulu değil. Geliştirici modu açılınca Altyazı+ kendisi kurar."
           }
         }
       }
@@ -2956,7 +3116,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "TV uygulaması kurulu değil. Hata ayıklama açılınca CouchSubs ağ üzerinden kendisi kurar."
+            "value": "TV uygulaması kurulu değil. Hata ayıklama açılınca Altyazı+ ağ üzerinden kendisi kurar."
           }
         }
       }
@@ -3196,7 +3356,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ses motoru uygulamada yok. CouchSubs'ı yeniden indirin."
+            "value": "Ses motoru uygulamada yok. Altyazı+'yı yeniden indirin."
           }
         }
       }
@@ -3244,7 +3404,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bu Samsung TV, CouchSubs TV uygulaması için çok eski (2019 ve sonraki modeller destekleniyor)."
+            "value": "Bu Samsung TV, Altyazı+ TV uygulaması için çok eski (2019 ve sonraki modeller destekleniyor)."
           }
         }
       }
@@ -3420,7 +3580,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "PS5'i açın. CouchSubs'ta giriş yaptığınız ikinci hesabın kullanıcısıyla Ayarlar › Sistem › Uzaktan Oynatma › Cihazı Eşleştir'i açın ve orada görünen 8 haneli kodu girin."
+            "value": "PS5'i açın. Altyazı+'da giriş yaptığınız ikinci hesabın kullanıcısıyla Ayarlar › Sistem › Uzaktan Oynatma › Cihazı Eşleştir'i açın ve orada görünen 8 haneli kodu girin."
           }
         }
       }
@@ -3436,7 +3596,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "TV'yi açın. Bağlan'a bastığınızda TV bir kez izin ister, kumandayla onaylayın. CouchSubs TV uygulaması kurulu değilse bu ekran kurmanıza yardım eder."
+            "value": "TV'yi açın. Bağlan'a bastığınızda TV bir kez izin ister, kumandayla onaylayın. Altyazı+ TV uygulaması kurulu değilse bu ekran kurmanıza yardım eder."
           }
         }
       }
@@ -3596,7 +3756,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs'a hoş geldiniz"
+            "value": "Altyazı+'ya hoş geldiniz"
           }
         }
       }
@@ -4252,7 +4412,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs'a Windows Güvenlik Duvarı'nda izin ver"
+            "value": "Altyazı+'ya Windows Güvenlik Duvarı'nda izin ver"
           }
         }
       }
@@ -4268,7 +4428,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Windows Güvenlik Duvarı artık CouchSubs'a izin veriyor."
+            "value": "Windows Güvenlik Duvarı artık Altyazı+'ya izin veriyor."
           }
         }
       }
@@ -4348,7 +4508,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs'ın PS5'ten ve TV'den gelen bağlantıları alabilmesi gerekiyor. Windows bir kez izin ister."
+            "value": "Altyazı+'nın PS5'ten ve TV'den gelen bağlantıları alabilmesi gerekiyor. Windows bir kez izin ister."
           }
         }
       }
@@ -4364,7 +4524,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "CouchSubs'a izin verin, sonra PS5'te Cihazı Eşleştir'i yeniden açın ve yeni kodu girin."
+            "value": "Altyazı+'ya izin verin, sonra PS5'te Cihazı Eşleştir'i yeniden açın ve yeni kodu girin."
           }
         }
       }

@@ -45,6 +45,7 @@ public partial class App : Application
         RemotePlayDiagnostics.Start();
         ThemeManager.Apply(Resources);
         ThemeManager.Follow(Resources);
+        TitleBar.FollowAllWindows();
         var controller = new AppController(new LiveServices(), new DpapiAppStore(), new FileSettingsStore(), new WindowsSleepGuard(),
             Localizer.Current, action => Dispatcher.BeginInvoke(action))
         {

@@ -76,6 +76,10 @@ public partial class MainView : UserControl
 
     private void OnSettings(object sender, RoutedEventArgs e) => SettingsWindow.Open(Window.GetWindow(this), controller);
 
+    // Oyun adına tıklanınca Ayarlar "Oyun" sekmesinde açılır.
+    private void OnGame(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+        SettingsWindow.Open(Window.GetWindow(this), controller, SettingsWindow.GameTab);
+
     private void OnDownload(object sender, RoutedEventArgs e) => controller.StartModelDownload();
 
     /// <summary>
