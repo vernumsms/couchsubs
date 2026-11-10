@@ -1257,9 +1257,10 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                 await foreach (var segment in segments.Reader.ReadAllAsync(work.Token))
                 {
                     var clock = System.Diagnostics.Stopwatch.StartNew();
-                    var text = await recognizer.TranscribeAsync(segment.Samples, work.Token);
+                    var heard = await recognizer.TranscribeAsync(segment.Samples, work.Token);
+                    var text = heard.Text;
                     services.WriteDiagnostic(text is null ? "duyulan-bos" : "duyulan", clock.ElapsedMilliseconds,
-                        $"{segment.Samples.Length / (double)SpeechSegmenter.Rate:0.0} sn ses{(text is null ? "" : " => " + text)}");
+                        $"{segment.Samples.Length / (double)SpeechSegmenter.Rate:0.0} sn ses, güven %{heard.Confidence * 100:0}{(text is null ? "" : " => " + text)}");
                     if (text is not null && pipeline is { } current) await current.ShowHeardAsync(text, segment.StartedAt);
                 }
             }

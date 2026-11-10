@@ -78,3 +78,30 @@ public class GameSpeechTests
         Assert.Equal(["TR: Get down!"], sender.Sent);
     }
 }
+
+/// Oyun önceki repliği ekranda tutup yenisini altına ekliyor; TV'de önceki satır ikinci kez çıkmamalı.
+public class RepeatedLineTests
+{
+    private sealed class LineTranslator : ITextTranslator
+    {
+        public Task<string> TranslateAsync(string text, CancellationToken cancellationToken = default) =>
+            Task.FromResult(string.Join('\n', text.Split('\n').Select(line => "TR " + line)));
+    }
+
+    [Fact]
+    public async Task LineKeptFromThePreviousSubtitleIsNotShownAgain()
+    {
+        var sender = new FakeSender();
+        var pipeline = new SubtitlePipeline(
+            new FakeReader("Kal Ready, Park?", "Kal Ready, Park?", "Kal Ready, Park?\nPark Hit it now!", "Kal Ready, Park?\nPark Hit it now!",
+                "Kal Ready, Park?\nPark Hit it now!"),
+            new LineTranslator(), sender);
+        for (var i = 0; i < 5; i++)
+        {
+            await pipeline.ProcessAsync(Frame.Blank(64, 64), new CropRegion());
+            await pipeline.WaitForTranslationsAsync();
+        }
+        Assert.Equal("TR Kal Ready, Park?", sender.Sent[0]);
+        Assert.Equal("TR Park Hit it now!", sender.Sent[^1]);
+    }
+}

@@ -9,6 +9,9 @@ namespace CouchSubs.Translation.Tests;
 
 public class ClaudeTranslatorTests
 {
+    // Testlerin çoğu önce yerel, sonra Claude çevirisini bekliyor; Claude'u bekleme süresi yalnız kendi testinde açılır.
+    public ClaudeTranslatorTests() => ClaudeTranslator.QuickDelay = TimeSpan.Zero;
+
     /// <summary>Düz satırlı test yanıtını yapılandırılmış (JSON) yanıta çevirir; zaten JSON ise dokunmaz.</summary>
     private static string AsJson(string plain) =>
         plain.TrimStart().StartsWith('{') ? plain
@@ -85,6 +88,19 @@ public class ClaudeTranslatorTests
         Assert.Equal("Blöfünü göreceğiz.", await result.Refined);
         Assert.StartsWith(ClaudeTranslator.SystemPrompt, claude.Requests[0].System);
         Assert.Equal("We're gonna cali his bluff", LastLine(claude.Requests[0].User.ReplaceLineEndings("\n")));
+    }
+
+    /// Claude hızlı yanıt verirse yerel çeviri hiç gösterilmez: altyazı önce çıkıp hemen değişmez.
+    [Fact]
+    public async Task FastClaudeReplySkipsTheLocalTranslation()
+    {
+        ClaudeTranslator.QuickDelay = TimeSpan.FromSeconds(5);
+        var translator = new ClaudeTranslator(new FakeClaude(user => "Blöfünü göreceğiz."), new FakeLocal());
+
+        var result = await translator.TranslateProgressivelyAsync("We're gonna call his bluff");
+
+        Assert.Equal("Blöfünü göreceğiz.", result.Quick);
+        Assert.Null(await result.Refined);
     }
 
     [Fact]

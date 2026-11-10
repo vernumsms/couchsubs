@@ -171,6 +171,9 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
     /// <summary>Son Claude hatası; çeviri düzgün gidiyorsa null.</summary>
     public OnlineKeyState? LastError { get; private set; }
 
+    /// <summary>Claude'un çevirisi bu süre içinde gelirse yerel (hızlı) çeviri hiç gösterilmez.</summary>
+    internal static TimeSpan QuickDelay { get; set; } = TimeSpan.FromMilliseconds(2500);
+
     public async Task<ProgressiveTranslation> TranslateProgressivelyAsync(string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -182,7 +185,10 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
             && await RefineAsync(text, cancellationToken).ConfigureAwait(false) is { } remembered)
             return ProgressiveTranslation.Final(remembered);
 
-        // Claude isteği hemen başlar; cihaz üstü çeviri bu sırada yapılır ve önce o gösterilir.
+        // Claude isteği hemen başlar; cihaz üstü çeviri bu sırada yapılır. Claude kısa sürede yanıt verirse yalnız
+        // onun çevirisi gösterilir: önce yerel çeviri çıkıp hemen değişince altyazı "yanlış gelip düzeliyor" gibi
+        // görünüyordu. Claude gecikirse (bağlantı yavaş) yerel çeviri gösterilir, Claude'unki gelince yerine geçer.
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         var refined = RefineAsync(text, cancellationToken);
         string quick;
         try
@@ -194,6 +200,10 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
             // Cihaz üstü model yoksa (indirilmemiş) Claude'un çevirisi beklenir.
             return ProgressiveTranslation.Final(await refined.ConfigureAwait(false) ?? throw new TranslatorException(TranslatorStatus.NeedsDownload));
         }
+        if (QuickDelay <= TimeSpan.Zero) return new ProgressiveTranslation(quick, refined);
+        var left = QuickDelay - clock.Elapsed;
+        if (left > TimeSpan.Zero) await Task.WhenAny(refined, Task.Delay(left, cancellationToken)).ConfigureAwait(false);
+        if (refined.IsCompletedSuccessfully && refined.Result is { } early) return ProgressiveTranslation.Final(early);
         return new ProgressiveTranslation(quick, refined);
     }
 

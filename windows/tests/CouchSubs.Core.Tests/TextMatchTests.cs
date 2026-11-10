@@ -37,8 +37,22 @@ public class TextMatchTests
         Assert.False(TextMatch.IsSameSubtitle(sent, TextMatch.Normalize("Across the deep waters, Pbo went,")));
     }
 
+    /// Call of Duty'de altyazı solarken okunan bozuk satırlar (kayıttan); Claude bunlardan uydurma cümle çıkarıyordu.
+    [Theory]
+    [InlineData("[lell now he died. I", "[Tell me how he died.]")]
+    [InlineData("Ilhey musl hiding near IIIE crash silp I", "[They must be hiding near the crash site...]")]
+    [InlineData("Chow •s still hanqinc; hy a thruat:.", "Chow's still hanging on by a thread.")]
+    [InlineData("The largp qray hilildinrg", "Ko The large, gray building.")]
+    [InlineData("Palk qonna wanta c.hütk this cur", "Dunn Park- You're gonna wanna check this out.")]
+    [InlineData("Kal Hit the hiltton.", "Kal Hit the button.")]
+    public void FadingRereadIsSameSubtitle(string reread, string sent) =>
+        Assert.True(TextMatch.IsSameSubtitle(TextMatch.Normalize(reread), TextMatch.Normalize(sent)));
+
     [Theory]
     [InlineData("we do not have time", "the gate will not hold")]
+    [InlineData("kal copy yellow triangle", "look for a yellow triangle")]
+    [InlineData("fastest route is the north door it may be flooded", "fastest route is the north door")]
+    [InlineData("two targets left park", "one target left park")]
     [InlineData("we do not have time for this boy and you know it", "we do not have time")]
     [InlineData("where is the boy", "where is the ship")]
     [InlineData("you should not be here", "i told you to stay with your mother")]

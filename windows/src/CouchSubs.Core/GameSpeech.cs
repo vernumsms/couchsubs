@@ -5,9 +5,12 @@ namespace CouchSubs.Core;
 /// <summary>Konuşmayı yazıya çeviren model (oyun sesini dinlemek için; ör. Whisper).</summary>
 public interface ISpeechRecognizer : IDisposable
 {
-    /// <summary>16 kHz tek kanal örneklerdeki İngilizce konuşma; konuşma yoksa ya da anlaşılmadıysa null.</summary>
-    Task<string?> TranscribeAsync(float[] samples, CancellationToken cancellationToken);
+    /// <summary>16 kHz tek kanal örneklerdeki İngilizce konuşma; konuşma yoksa ya da anlaşılmadıysa metni null.</summary>
+    Task<HeardSpeech> TranscribeAsync(float[] samples, CancellationToken cancellationToken);
 }
+
+/// <summary>Duyulan konuşma: metin (yoksa null) ve modelin ne kadar emin olduğu (0–1).</summary>
+public sealed record HeardSpeech(string? Text, float Confidence);
 
 /// <summary>İndirilmesi gereken konuşma tanıma modeli.</summary>
 public interface IGameSpeechModel
@@ -137,6 +140,9 @@ public sealed class SpeechSegmenter
             "thank you", "thanks for watching", "thank you for watching", "you", "bye", "okay", "oh", "uh", "um",
             "please subscribe", "subscribe", "see you next time", "so", "hmm",
         ];
-        return hallucinations.Contains(plain) ? null : cleaned;
+        if (hallucinations.Contains(plain)) return null;
+        // Konuşma tanıma, anlamadığı sesi (başka dilde konuşma, gürültü) video kapanışı gibi kalıp sözlere çevirir.
+        string[] videoPhrases = ["next video", "see you next time", "see you in the next", "thanks for watching", "subscribe"];
+        return videoPhrases.Any(plain.Contains) ? null : cleaned;
     }
 }

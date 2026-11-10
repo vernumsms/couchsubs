@@ -52,20 +52,34 @@ public sealed class WhisperRecognizer : ISpeechRecognizer
             // Parçalar birbirinden bağımsız: önceki parçanın metni uydurma tekrara yol açmasın.
             .WithNoContext()
             .WithNoSpeechThreshold(0.6f)
+            .WithProbabilities()
             .Build();
     }
 
-    public async Task<string?> TranscribeAsync(float[] samples, CancellationToken cancellationToken)
+    /// <summary>
+    /// Model bundan az eminse metin atılır. Anlaşılmayan ses (Korece konuşma, patlama) "I'm sorry", "I'll be back in
+    /// a minute" gibi uydurma cümlelere dönüşüyordu. Değer kayıttaki güven puanlarına bakılarak ayarlanacak.
+    /// </summary>
+    public const float MinConfidence = 0.4f;
+
+    public async Task<HeardSpeech> TranscribeAsync(float[] samples, CancellationToken cancellationToken)
     {
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var text = new System.Text.StringBuilder();
+            double weighted = 0;
+            var letters = 0;
             await foreach (var segment in processor.ProcessAsync(samples, cancellationToken).ConfigureAwait(false))
             {
                 text.Append(segment.Text).Append(' ');
+                var length = Math.Max(1, segment.Text.Trim().Length);
+                weighted += segment.Probability * length;
+                letters += length;
             }
-            return SpeechSegmenter.Clean(text.ToString());
+            var confidence = letters == 0 ? 0f : (float)(weighted / letters);
+            var cleaned = SpeechSegmenter.Clean(text.ToString());
+            return new HeardSpeech(confidence < MinConfidence ? null : cleaned, confidence);
         }
         finally
         {

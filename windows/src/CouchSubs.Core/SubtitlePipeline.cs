@@ -201,6 +201,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     /// </summary>
     private void Send(string text, int number, TextBox? box)
     {
+        text = WithoutRepeatedLines(text, number);
         if (number == lineOnScreen)
         {
             sender.SendSubtitle(text, OnScreenMs, box);
@@ -209,6 +210,32 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             onScreenSentAt = Environment.TickCount64;
         }
         else sender.SendSubtitle(text, ReadingTime(text), box);
+    }
+
+    /// <summary>Bir önceki altyazının (başka satır numarası) çeviri satırları ve son gönderilenin numarası/satırları.</summary>
+    private string[] previousLines = [];
+    private string[] sentLines = [];
+    private int sentNumber;
+
+    /// <summary>
+    /// Oyun önceki repliği ekranda tutup yenisini altına ekliyor ("A / B", sonra "B / C"). TV'de B ikinci kez
+    /// gösterilmez, yalnız yeni satır (C) çıkar; aynı satır blokta iki kez geçiyorsa bir kez yazılır. Bütün satırlar
+    /// zaten gösterildiyse metin olduğu gibi kalır.
+    /// </summary>
+    private string WithoutRepeatedLines(string text, int number)
+    {
+        var lines = text.Split('\n');
+        if (number != sentNumber)
+        {
+            previousLines = sentLines;
+            sentNumber = number;
+        }
+        sentLines = lines;
+        var seen = new HashSet<string>(previousLines.Select(line => TextMatch.Normalize(line)));
+        var kept = new List<string>();
+        foreach (var line in lines)
+            if (seen.Add(TextMatch.Normalize(line))) kept.Add(line);
+        return kept.Count == 0 || kept.Count == lines.Length ? text : string.Join('\n', kept);
     }
 
     /// <summary>
@@ -421,6 +448,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             lastReading = Reading.Empty;
             schedule.Reset();
             onScreenText = null;
+            previousLines = [];
+            sentLines = [];
             if (stabilizer.Reset() == StabilizerAction.Clear) sender.Clear();
         }
     }
