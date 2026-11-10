@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 <widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
-        id="https://github.com/yorulmazsinan/couchsubs" version="0.9.7" viewmodes="maximized">
+        id="https://github.com/yorulmazsinan/couchsubs" version="0.9.8" viewmodes="maximized">
     <tizen:application id="CouchSubsT.CouchSubs" package="CouchSubsT" required_version="5.0"/>
     <content src="index.html"/>
     <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>

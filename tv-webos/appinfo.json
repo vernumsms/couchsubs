@@ -1,6 +1,6 @@
 {
   "id": "com.couchsubs.tv",
-  "version": "0.9.7",
+  "version": "0.9.8",
   "vendor": "Enmera",
   "type": "web",
   "main": "index.html",

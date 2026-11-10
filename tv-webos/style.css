@@ -92,6 +92,21 @@ html, body {
   text-shadow: 0 2px 4px #000;
 }
 
+/* Modern görünüm: yumuşak köşeli şerit, ince açık çerçeve ve gölge; konuşmacı adı sarı. Yazı tipi aynı kalır.
+   Zeminin koyuluğu yine Ayarlar'daki "Arka plan" ayarından gelir (satır içi stil). */
+.theme-modern #subtitle-text,
+.theme-modern #subtitle-prev-text {
+  padding: 12px 32px;
+  border-radius: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  color: #F4F4F2;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.theme-modern .who { color: #F5B83D; }
+/* Klasik görünümde ad ayrı renk almaz. */
+.theme-classic .who { color: inherit; }
+
 
 /* Panel ve bekleme ekranı: design/tokens.json'un koyu tema renkleri (docs/TASARIM.md). */
 #panel {

@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.6';
+  var APP_VERSION = '0.9.8';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -111,6 +111,27 @@
     return box.right > box.left && box.bottom > box.top ? box : null;
   }
 
+  // Satır başındaki konuşmacı adı ("Kal: ...", "Teğmen West: ...") ayrı bir öğeye konur; modern görünümde renkli
+  // yazılır. Ad en çok üç sözcük ve 24 harf olabilir; "Not: bu bir deneme" gibi uzun ön ekler ad sayılmaz.
+  var SPEAKER = /^([^:\n]{1,24}):(\s)/;
+  function fillWithSpeakers(el, text) {
+    while (el.firstChild) el.removeChild(el.firstChild);
+    var lines = String(text).split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (i > 0) el.appendChild(document.createTextNode('\n'));
+      var match = SPEAKER.exec(lines[i]);
+      if (match && match[1].trim().split(/\s+/).length <= 3) {
+        var who = document.createElement('span');
+        who.className = 'who';
+        who.textContent = match[1] + ':';
+        el.appendChild(who);
+        el.appendChild(document.createTextNode(match[2] + lines[i].slice(match[0].length)));
+      } else {
+        el.appendChild(document.createTextNode(lines[i]));
+      }
+    }
+  }
+
   // paragraphs: görev paneli gibi başlık ve maddeli yazılar satır satır, sola yaslı gösterilir.
   function showSubtitle(text, duration, box, paragraphs) {
     // Önceki satır artık ayrıca gösterilmez: iki kutu üst üste binmiş gibi görünüyor, aynı cümlenin iki okunuşu
@@ -118,7 +139,7 @@
     hidePrevious();
     shownAt = Date.now();
     currentBox = validBox(box);
-    $('subtitle-text').textContent = text;
+    fillWithSpeakers($('subtitle-text'), text);
     // Alt alta satırlar (ayrı konuşmacılar, cümleler, seçenekler) oyundaki sırayla, yukarıdan aşağıya gösterilir.
     $('subtitle-text').style.whiteSpace = 'pre-line';
     $('subtitle-text').style.textAlign = paragraphs ? 'left' : '';
@@ -266,6 +287,9 @@
   }
 
   function applyStyle(style) {
+    // Görünüm: "modern" (yumuşak köşeli şerit, renkli konuşmacı adı) ya da "classic" (eski düz kutu).
+    // Görünüm göndermeyen eski masaüstü sürümünde modern kalır.
+    if (style.theme === 'classic' || style.theme === 'modern') document.body.className = 'theme-' + style.theme;
     if (style.fontSize) {
       $('subtitle-text').style.fontSize = style.fontSize + 'px';
       $('subtitle-prev-text').style.fontSize = Math.round(style.fontSize * 0.8) + 'px';

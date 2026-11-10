@@ -32,7 +32,17 @@ public sealed record SubtitleStyle(
     int BottomPercent = 7,
     SubtitlePlacement Placement = SubtitlePlacement.Cover,
     int Background = 72,
-    bool Bold = false);
+    bool Bold = false,
+    SubtitleTheme Theme = SubtitleTheme.Modern);
+
+/// <summary>Altyazının görünümü (TV'de).</summary>
+public enum SubtitleTheme
+{
+    /// <summary>Yumuşak köşeli şerit, ince çerçeve ve gölge; konuşmacı adı sarı.</summary>
+    Modern,
+    /// <summary>Eski düz, yarı saydam kutu.</summary>
+    Classic,
+}
 
 /// <summary>Altyazıları TV'ye ileten taraf (gerçekte <see cref="SubtitleServer"/>).</summary>
 public interface ISubtitleSender
@@ -375,6 +385,7 @@ public sealed class SubtitleServer(int port = 8787) : ISubtitleSender, IDisposab
             ["bottomPercent"] = style.BottomPercent,
             ["fontSize"] = style.FontSize,
             ["placement"] = style.Placement.ToString().ToLowerInvariant(),
+            ["theme"] = style.Theme.ToString().ToLowerInvariant(),
         });
 
     private static string Frame(string name, SortedDictionary<string, object> json) =>
