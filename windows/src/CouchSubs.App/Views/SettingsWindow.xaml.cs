@@ -52,6 +52,8 @@ public partial class SettingsWindow : Window
         AiModel.SelectedItem = AiModel.Items.Cast<ComboBoxItem>().FirstOrDefault(item => (string)item.Tag == settings.AiModel)
                                ?? AiModel.Items[0];
         InstantOn.IsChecked = settings.InstantSubtitles;
+        GameName.Text = settings.GameName;
+        GameNotes.Text = settings.GameNotes;
         loading = false;
     }
 
@@ -106,6 +108,14 @@ public partial class SettingsWindow : Window
         controller.RemoveAiKey();
         AiStatus.Visibility = Visibility.Collapsed;
         ShowAi();
+    }
+
+    private void OnGameChanged(object sender, RoutedEventArgs e)
+    {
+        var name = GameName.Text.Trim();
+        var notes = GameNotes.Text.Trim();
+        if (name != controller.Settings.GameName || notes != controller.Settings.GameNotes)
+            Update(s => s with { GameName = name, GameNotes = notes });
     }
 
     private void OnInstantToggle(object sender, RoutedEventArgs e) => Update(s => s with { InstantSubtitles = InstantOn.IsChecked == true });

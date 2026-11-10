@@ -189,6 +189,53 @@ public class ClaudeTranslatorTests
     }
 
     [Fact]
+    public async Task TranslationsAreRememberedPerGameAcrossSessions()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "couchsubs-hafiza-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var first = new FakeClaude(_ => "Kapıyı tut.");
+            var memory = new TranslationMemory(folder);
+            var translator = new ClaudeTranslator(first, new FakeLocal(), memory: memory, game: () => ("Call of Duty", ""));
+            await (await translator.TranslateProgressivelyAsync("Hold the gate.")).Refined;
+            memory.Flush();
+            Assert.True(File.Exists(Path.Combine(folder, "call-of-duty.json")));
+
+            // Yeni oturum (uygulama yeniden açıldı): satır Claude'a gitmeden, hemen gelir.
+            var second = new FakeClaude(_ => "YANLIŞ");
+            var again = new ClaudeTranslator(second, new FakeLocal(), memory: new TranslationMemory(folder), game: () => ("Call of Duty", ""));
+            Assert.Equal("Kapıyı tut.", (await again.TranslateProgressivelyAsync("Hold the gate.")).Quick);
+            Assert.Empty(second.Requests);
+
+            // Başka oyunun hafızası ayrıdır.
+            var other = new ClaudeTranslator(second, new FakeLocal(), memory: new TranslationMemory(folder), game: () => ("God of War", ""));
+            await (await other.TranslateProgressivelyAsync("Hold the gate.")).Refined;
+            Assert.Single(second.Requests);
+        }
+        finally
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, true);
+        }
+    }
+
+    [Fact]
+    public async Task GameNameAndPlayerNotesAreSentToClaude()
+    {
+        var claude = new FakeClaude(_ => "Koş!");
+        var translator = new ClaudeTranslator(claude, new FakeLocal(), game: () => ("Call of Duty", "Ghost = çevirme"));
+        await (await translator.TranslateProgressivelyAsync("Run!")).Refined;
+        Assert.Contains("Game: Call of Duty", claude.Requests[0].User);
+        Assert.Contains("Ghost = çevirme", claude.Requests[0].User);
+    }
+
+    [Fact]
+    public void GameNameBecomesSafeFileName()
+    {
+        Assert.Equal("call-of-duty-black-ops-7", TranslationMemory.FileName("Call of Duty: Black Ops 7"));
+        Assert.Equal("genel", TranslationMemory.FileName("  "));
+    }
+
+    [Fact]
     public async Task ExplanationInsteadOfTranslationIsNotShown()
     {
         var translator = new ClaudeTranslator(new FakeClaude(_ =>
@@ -323,9 +370,9 @@ public class ClaudeTranslatorTests
 
         Assert.EndsWith("Translate:\nShoot it down!", claude.Requests[1].User.ReplaceLineEndings("\n"));
         Assert.Equal(Lines("[tr] Drive him back!", "[tr] Shoot it down!"), second);
-        // Hepsi önbellekteyse Claude'a hiç gidilmez.
+        // Hepsi önbellekteyse Claude'a hiç gidilmez; yerel çeviri gösterilmez, kayıtlı Türkçe hemen gelir.
         Assert.Equal(Lines("[tr] Take out that RPG!", "[tr] Shoot it down!"),
-            await (await translator.TranslateProgressivelyAsync(Lines("Take out that RPG!", "Shoot it down!"))).Refined);
+            (await translator.TranslateProgressivelyAsync(Lines("Take out that RPG!", "Shoot it down!"))).Quick);
         Assert.Equal(2, claude.Requests.Count);
     }
 

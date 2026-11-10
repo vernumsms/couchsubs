@@ -115,6 +115,18 @@
                     </StackPanel>
                 </c:Card>
 
+                <c:Card Title="{t:T 'Game you are playing'}" Margin="0,16,0,0">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,8"
+                                   Text="{t:T 'Claude knows the characters and terms of the game from the start, and every translation is remembered for this game: when you replay a scene the Turkish appears instantly and costs nothing.'}" />
+                        <TextBox x:Name="GameName" Width="420" HorizontalAlignment="Left" LostFocus="OnGameChanged" />
+                        <TextBlock Style="{StaticResource HintText}" Margin="0,12,0,4"
+                                   Text="{t:T 'Notes and glossary (optional, one per line). For example: Ghost = do not translate, Price is a man, Black Ops = Kara Operasyonlar'}" />
+                        <TextBox x:Name="GameNotes" Width="420" Height="90" HorizontalAlignment="Left" AcceptsReturn="True"
+                                 TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" LostFocus="OnGameChanged" />
+                    </StackPanel>
+                </c:Card>
+
                 <c:Card Title="{t:T 'Instant subtitles'}" Margin="0,16,0,0">
                     <StackPanel>
                         <CheckBox x:Name="InstantOn" Content="{t:T 'Follow the game line by line'}" Foreground="{DynamicResource textPrimaryBrush}"

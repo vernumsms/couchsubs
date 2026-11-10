@@ -86,7 +86,11 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             {
                 case StabilizerKind.Clear:
                     lineOnScreen = null;
+                    onScreenText = null;
                     sender.Clear();
+                    break;
+                case StabilizerKind.None:
+                    KeepAlive();
                     break;
                 case StabilizerKind.Translate:
                     // Çevirisi henüz sürmekte olan replik yeniden okunduysa (konuşmacı adı bir görünüp bir kayboldu,
@@ -103,7 +107,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                         if (recent.Count > 32) recent.RemoveAt(0);
                     }
                     // Anlık modda yeni satır gelir gelmez eskisinin çevirisi kalkar; yenisinin çevirisi ardından gelir.
-                    if (instant && lastShown > 0) sender.Clear();
+                    if (instant && lastShown > 0) { sender.Clear(); onScreenText = null; }
                     var number = ++lastRequested;
                     var current = session;
                     lineOnScreen = number;
@@ -130,6 +134,45 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             if (pending.Length == 0) return;
             await Task.WhenAll(pending);
         }
+    }
+
+    // --- Altyazının ekranda kalma süresi ---
+
+    /// <summary>Oyundaki satır ekrandayken TV'ye gönderilen süre; satır durdukça <see cref="KeepAlive"/> yeniler.</summary>
+    private const int OnScreenMs = 15000;
+    /// <summary>Oyundaki satır hâlâ ekrandaysa çeviri bu aralıkla yeniden gönderilir (süresi dolup erken kalkmasın).</summary>
+    private const int KeepAliveMs = 8000;
+    private string? onScreenText;
+    private TextBox? onScreenBox;
+    private long onScreenSentAt;
+
+    /// <summary>
+    /// Çeviriyi TV'ye gönderir. Satır oyunda hâlâ duruyorsa oyundaki altyazı kalkana kadar görünür (uzun sahnede,
+    /// seçenek ekranında 15 saniyeden uzun da olsa); kalktıysa okunacak kadar kalır.
+    /// </summary>
+    private void Send(string text, int number, TextBox? box)
+    {
+        if (number == lineOnScreen)
+        {
+            sender.SendSubtitle(text, OnScreenMs, box);
+            onScreenText = text;
+            onScreenBox = box;
+            onScreenSentAt = Environment.TickCount64;
+        }
+        else sender.SendSubtitle(text, ReadingTime(text), box);
+    }
+
+    /// <summary>
+    /// Oyundaki satır değişmeden duruyor: TV'deki çevirinin süresi yenilenir. Görüntü akışı takılırsa (kare gelmez)
+    /// yenileme de durur ve altyazı en geç 15 saniyede kendiliğinden kalkar.
+    /// </summary>
+    private void KeepAlive()
+    {
+        if (onScreenText is null || lineOnScreen is null || lineOnScreen != lastShown) return;
+        var now = Environment.TickCount64;
+        if (now - onScreenSentAt < KeepAliveMs) return;
+        sender.SendSubtitle(onScreenText, OnScreenMs, onScreenBox);
+        onScreenSentAt = now;
     }
 
     /// <summary>Satır ekrandan kalktıktan sonra gelen çevirinin TV'de kalacağı süre (TV uygulamasıyla aynı kural).</summary>
@@ -275,7 +318,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             lastShown = number;
             lastShownAt = Environment.TickCount64;
             // Satır hâlâ ekrandaysa kalkınca silinir; kalktıysa okunacak kadar gösterilir.
-            sender.SendSubtitle(translated, number == lineOnScreen ? 15000 : ReadingTime(translated), box);
+            Send(translated, number, box);
             LastPair = (source, translated);
             LastBox = box;
             Remember(source, translated);
@@ -305,12 +348,12 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             if (current == session && number == lastShown && better is { Length: > 0 } && better != quick
                 && (number == lineOnScreen || (!instant && Environment.TickCount64 - lastShownAt < ReadingTime(quick))))
             {
-                sender.SendSubtitle(better, number == lineOnScreen ? 15000 : ReadingTime(better), box);
+                Send(better, number, box);
                 LastPair = (source, better);
                 changed = true;
             }
             // Yapay zekâ ekrandakinin altyazı olmadığını söyledi (silah adı, gösterge): hızlı çeviri kaldırılır.
-            else if (current == session && number == lastShown && better is { Length: 0 }) sender.Clear();
+            else if (current == session && number == lastShown && better is { Length: 0 }) { sender.Clear(); onScreenText = null; }
             if (current == session && better is not null) Remember(source, better);
         }
         if (changed) PairShown?.Invoke(source, better!);
@@ -328,6 +371,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             spokenLines.Clear();
             lastReading = Reading.Empty;
             schedule.Reset();
+            onScreenText = null;
             if (stabilizer.Reset() == StabilizerAction.Clear) sender.Clear();
         }
     }

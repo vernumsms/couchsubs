@@ -122,13 +122,51 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
     /// <summary>Yapılandırılmış (JSON) istek reddedildi; bu oturumda dublaj düz çeviriyle sürer.</summary>
     private volatile bool _jsonUnavailable;
 
-    public ClaudeTranslator(IClaudeCompletion claude, ITextTranslator? fallback, TranslationLog? log = null, Func<bool>? dubbing = null)
+    /// <summary>Oyuna özel kalıcı hafıza (yoksa yalnız oturum içi önbellek).</summary>
+    private readonly TranslationMemory? _memory;
+    /// <summary>Oyuncunun ayarlarda yazdığı oyun adı ve notlar (sözlük); her istekte bakılır.</summary>
+    private readonly Func<(string Name, string Notes)> _game;
+    private volatile string? _currentGame;
+
+    public ClaudeTranslator(IClaudeCompletion claude, ITextTranslator? fallback, TranslationLog? log = null, Func<bool>? dubbing = null,
+        TranslationMemory? memory = null, Func<(string Name, string Notes)>? game = null)
     {
         _claude = claude;
         _fallback = fallback;
         _log = log;
         _dubbing = dubbing ?? (() => false);
+        _memory = memory;
+        _game = game ?? (() => ("", ""));
     }
+
+    /// <summary>Oyun değiştiyse o oyunun hafızasına geçer; kayıtlı konuşmacı adları Claude'a baştan gönderilir.</summary>
+    private void UseGame()
+    {
+        var name = _game().Name.Trim();
+        if (name == _currentGame) return;
+        lock (_gameGate)
+        {
+            if (name == _currentGame) return;
+            _currentGame = name;
+            if (_memory is not null) SwitchMemory(name);
+        }
+    }
+
+    private readonly object _gameGate = new();
+
+    private void SwitchMemory(string name)
+    {
+        if (_memory is null) return;
+        _memory.Use(name);
+        _names.Clear();
+        foreach (var who in _memory.Names.Take(64)) _names[who] = 0;
+        lock (_linesGate) _lines.Clear();
+        _cache.Clear();
+        _speech.Clear();
+    }
+
+    /// <summary>Bekleyen hafıza değişikliklerini diske yazar.</summary>
+    public void Flush() => _memory?.Flush();
 
     /// <summary>Son Claude hatası; çeviri düzgün gidiyorsa null.</summary>
     public OnlineKeyState? LastError { get; private set; }
@@ -136,8 +174,13 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
     public async Task<ProgressiveTranslation> TranslateProgressivelyAsync(string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
+        UseGame();
         if (_cache.TryGetValue(text, out var cached)) return ProgressiveTranslation.Final(cached);
         if (_fallback is null) return ProgressiveTranslation.Final(await TranslateAsync(text, cancellationToken).ConfigureAwait(false));
+        // Bütün satırlar hafızada: yerel model hiç gösterilmez, kayıtlı Türkçe beklemeden gelir.
+        if (SubtitleSegmenter.StackedLines(text).Split('\n').All(line => LookupLine(line) is not null)
+            && await RefineAsync(text, cancellationToken).ConfigureAwait(false) is { } remembered)
+            return ProgressiveTranslation.Final(remembered);
 
         // Claude isteği hemen başlar; cihaz üstü çeviri bu sırada yapılır ve önce o gösterilir.
         var refined = RefineAsync(text, cancellationToken);
@@ -172,7 +215,7 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
     /// <summary>Claude'un çevirisi; başarısız olursa null (hiç hata fırlatmaz).</summary>
     private async Task<string?> RefineAsync(string text, CancellationToken cancellationToken)
     {
-        if (DateTimeOffset.UtcNow < _pausedUntil) return null;
+        UseGame();
         RememberNames(text);
         // Satırlar oyundaki gibi ayrılır; Claude aynı sayıda satırla, aynı sırayla yanıt vermeli.
         var source = SubtitleSegmenter.StackedLines(text);
@@ -188,6 +231,8 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
         var missing = Enumerable.Range(0, allLines.Length).Where(i => known[i] is null).ToList();
         var request = missing.Count == allLines.Length ? source : string.Join('\n', missing.Select(i => allLines[i]));
         var expectedLines = missing.Count;
+        // Claude'a hata yüzünden ara verildiyse hafızadaki satırlar yine gösterilir; eksik satır varsa yerel çeviri kalır.
+        if (missing.Count > 0 && DateTimeOffset.UtcNow < _pausedUntil) return null;
         // Bu istekte çevrilen satırlar "çevriliyor" diye işaretlenir; aynı anda gelen başka istek onları bekler.
         using var claim = Claim(missing.Select(i => allLines[i]));
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -462,6 +507,11 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
     internal string UserMessage(string text)
     {
         var message = new StringBuilder();
+        var (game, notes) = _game();
+        if (game.Trim().Length > 0) message.Append("Game: ").AppendLine(game.Trim());
+        if (notes.Trim().Length > 0)
+            message.AppendLine("Player's notes and glossary (always follow them):").AppendLine(notes.Trim());
+        if (game.Trim().Length > 0 || notes.Trim().Length > 0) message.AppendLine();
         lock (_historyGate)
         {
             if (_history.Count > 0)
@@ -496,7 +546,7 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
             for (var i = _lines.Count - 1; i >= 0; i--)
                 if (SameStoredLine(key, _lines[i].Key)) return _lines[i].Result;
         }
-        return null;
+        return _memory?.Lookup(key);
     }
 
     /// <summary>Şu an başka bir istekte çevrilen satırlar (anahtar → istek bitince tamamlanan görev).</summary>
@@ -545,6 +595,7 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
             _lines.Add((key, result));
             if (_lines.Count > 256) _lines.RemoveAt(0);
         }
+        _memory?.Store(key, result);
     }
 
     /// <summary>

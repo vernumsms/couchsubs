@@ -22,8 +22,20 @@ public sealed class LiveServices : IAppServices
 
     public Task<OnlineKeyCheck> CheckOnlineKeyAsync(string key) => DeepLTranslator.CheckAsync(key);
 
-    public ITextTranslator? MakeAiTranslator(string key, string model, ITextTranslator? fallback, Func<bool> dubbing) =>
-        new ClaudeTranslator(new AnthropicCompletion(key, model), fallback, AiLog, dubbing);
+    public ITextTranslator? MakeAiTranslator(string key, string model, ITextTranslator? fallback, Func<bool> dubbing,
+        Func<(string Name, string Notes)> game) =>
+        new ClaudeTranslator(new AnthropicCompletion(key, model), fallback, AiLog, dubbing, AiMemory, game);
+
+    /// <summary>Oyuna özel kalıcı çeviri hafızası; uygulama kapanırken bekleyen değişiklikler yazılır.</summary>
+    private static readonly TranslationMemory AiMemory = CreateMemory();
+
+    private static TranslationMemory CreateMemory()
+    {
+        var memory = new TranslationMemory(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CouchSubs", "hafiza"));
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => memory.Flush();
+        return memory;
+    }
 
     public void WriteDiagnostic(string kind, long milliseconds, string text) => AiLog.Write(kind, milliseconds, text, null);
 

@@ -2,7 +2,13 @@ CouchSubs'ın **Claude yapay zekâ çevirili** sürümü (vernumsms fork'u). Ori
 
 **İndir:** [Windows (kurulum)](https://github.com/vernumsms/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)
 
-**Bu sürümde yeni (claude.10): dublaj kapalıyken de temiz altyazı**
+**Bu sürümde yeni (claude.11): çeviri hafızası, oyun bilgisi, doğru süre**
+
+- **Kalıcı çeviri hafızası.** Claude'un çevirdiği her satır oyuna göre diske kaydedilir (%LOCALAPPDATA%\CouchSubs\hafiza). Bölümü baştan alınca, ölüp yeniden doğunca ya da uygulamayı kapatıp açınca aynı satırın Türkçesi beklemeden ve ücretsiz gelir.
+- **Oyun bilgisi ve sözlük.** Ayarlar → "Oynadığınız oyun": oyunun adını yazınca Claude karakterleri ve terimleri baştan bilir. Notlar kutusuna sözlük yazılabilir ("Ghost = çevirme", "Price erkek").
+- **Altyazı oyundaki kadar kalır.** Oyundaki satır 15 saniyeden uzun dursa da (uzun sahne, seçenek ekranı) Türkçesi kalkmaz; oyundaki kalkınca hemen kalkar.
+
+**claude.10'da gelenler: dublaj kapalıyken de temiz altyazı**
 
 - **Arayüz yazıları dublaj kapalıyken de gizlenir.** "SIRT ÇANTASI", "ENVANTER", "SIFIRLA SEKMESİ" gibi yazılar yalnız dublaj açıkken ayıklanıyordu; artık her zaman ayıklanıyor.
 - **Claude'un açıklamaları altyazıda çıkmaz.** Okunamayan satırda "I can't make out this line…" gibi açıklama yazılıyordu; artık satır boş kalıyor.

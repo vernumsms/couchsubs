@@ -51,6 +51,10 @@ public sealed record UserSettings
     public string AiModel { get; init; } = "claude-haiku-5-5";
     /// <summary>Anlık altyazı: yeni satır gelince eskisi hemen kalkar; geç gelen eski çeviriler gösterilmez.</summary>
     public bool InstantSubtitles { get; init; } = true;
+    /// <summary>Oynanan oyunun adı: Claude karakterleri ve terimleri baştan bilir; çeviri hafızası oyuna göre ayrı tutulur.</summary>
+    public string GameName { get; init; } = "";
+    /// <summary>Oyuncunun notları ve sözlüğü ("Ghost = Ghost", "Price erkek"); her istekte Claude'a gönderilir.</summary>
+    public string GameNotes { get; init; } = "";
 
     /// <summary>Ek bölgenin sayısı; <see cref="ExtraRegion"/> 1..ExtraRegionCount arasında çalışır.</summary>
     public const int ExtraRegionCount = 3;
@@ -161,7 +165,9 @@ public interface IAppServices
     ITextTranslator? MakeOnlineTranslator(string key, ITextTranslator? fallback) => null;
     Task<OnlineKeyCheck> CheckOnlineKeyAsync(string key) => Task.FromResult(new OnlineKeyCheck(OnlineKeyState.Unreachable));
     /// <summary>Claude çevirmeni (iki aşamalı); <paramref name="fallback"/> hemen gösterilen cihaz üstü çeviri. Bu derlemede yoksa null.</summary>
-    ITextTranslator? MakeAiTranslator(string key, string model, ITextTranslator? fallback, Func<bool> dubbing) => null;
+    /// <param name="game">Oyun adı ve oyuncunun notları (her istekte okunur; oyun sırasında değişebilir).</param>
+    ITextTranslator? MakeAiTranslator(string key, string model, ITextTranslator? fallback, Func<bool> dubbing,
+        Func<(string Name, string Notes)> game) => null;
     Task<OnlineKeyCheck> CheckAiKeyAsync(string key, string model) => Task.FromResult(new OnlineKeyCheck(OnlineKeyState.Unreachable));
     /// <summary>Türkçe dublaj modeli; bu derlemede yoksa null.</summary>
     IDubbingModel? Dubbing => null;
