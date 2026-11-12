@@ -234,6 +234,57 @@ public class ClaudeTranslatorTests
         }
     }
 
+    /// claude.15 kaydı: bozuk okunan "Kal CODY that" tahminle çevrildi ve hafızada kaldı; sonraki oturumda yine çıktı.
+    [Fact]
+    public async Task GuessedLinesAreNotRememberedAcrossSessions()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "couchsubs-hafiza-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            const string json = """{"lines":[{"speaker":"Kal","text":"Bunu bir kenara bırak.","spoken":"","emotion":"neutral","gender":"unknown","dialogue":true,"background":false,"guessed":true}]}""";
+            var memory = new TranslationMemory(folder);
+            var translator = new ClaudeTranslator(new FakeClaude(_ => json), new FakeLocal(), dubbing: () => true, memory: memory, game: () => ("Call of Duty", ""));
+            await (await translator.TranslateProgressivelyAsync("Kal CODY that.")).Refined;
+            memory.Flush();
+            Assert.Equal(0, new TranslationMemoryProbe(folder).Count);
+        }
+        finally
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, true);
+        }
+    }
+
+    /// Hafızada birebir çevirisi olan satır, oturumdaki benzer bir satırın çevirisiyle gösterilmez.
+    [Fact]
+    public async Task ExactRememberedLineWinsOverSimilarSessionLine()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "couchsubs-hafiza-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var memory = new TranslationMemory(folder);
+            var first = new ClaudeTranslator(new FakeClaude(_ => "Kal: Adımına dikkat et."), new FakeLocal(), memory: memory, game: () => ("Call of Duty", ""));
+            await (await first.TranslateProgressivelyAsync("Kal Watch your step.")).Refined;
+            memory.Flush();
+
+            var claude = new FakeClaude(_ => "Kal: Yanındayım!");
+            var translator = new ClaudeTranslator(claude, new FakeLocal(), memory: new TranslationMemory(folder), game: () => ("Call of Duty", ""));
+            await (await translator.TranslateProgressivelyAsync("Kal With you!")).Refined;
+            Assert.Equal("Kal: Adımına dikkat et.", (await translator.TranslateProgressivelyAsync("Kal Watch your step")).Quick);
+            Assert.Single(claude.Requests);
+        }
+        finally
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, true);
+        }
+    }
+
+    private sealed class TranslationMemoryProbe
+    {
+        private readonly TranslationMemory _memory;
+        public TranslationMemoryProbe(string folder) { _memory = new TranslationMemory(folder); _memory.Use("Call of Duty"); }
+        public int Count => _memory.Count;
+    }
+
     [Fact]
     public async Task GameNameAndPlayerNotesAreSentToClaude()
     {
@@ -457,6 +508,15 @@ public class ClaudeTranslatorTests
     [InlineData("helo s armored sweetheart american made", "hollis annorod sweetheart american made", true)]
     [InlineData("run", "you need to run", false)]
     [InlineData("get to the wheelhouse", "get out here", false)]
+    // claude.15 kaydı (CoD MW4): tek harf/sözcük farkı anlamı değiştiriyordu.
+    [InlineData("kal he s down", "kal he s clown", false)]
+    [InlineData("kal copy that", "kal cody that", false)]
+    [InlineData("kal watch your step", "kal with you", false)]
+    [InlineData("just one target left park", "two targets left park", false)]
+    [InlineData("fastest route is the north door it may be flooded", "fastest route is the north door", false)]
+    [InlineData("kal watchyour fire", "kal watch your fire", true)]
+    [InlineData("kal roger that", "roger that", true)]
+    [InlineData("just one target left park", "one target left park", true)]
     public void StoredLineMatchingIsStrict(string a, string b, bool same) =>
         Assert.Equal(same, ClaudeTranslator.SameStoredLine(a, b));
 

@@ -68,6 +68,12 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
         - Earlier lines are given only as context (who is speaking, what "it" or "he" refers to, consistent wording).
           Translate only the text after "Translate:".
         - This is fictional game dialogue: translate violent or crude language faithfully, in the same tone.
+        - Military and shooter vocabulary: the rank "Private" is "Er" ("Private Park" -> "Er Park"), "Sergeant"
+          "Çavuş", "Lieutenant" "Teğmen", "Captain" "Yüzbaşı"; "Copy", "Copy that", "Roger", "Solid copy", "Affirm"
+          -> "Anlaşıldı"; "NODs"/"NVGs" -> "gece görüşü"; "brush" used as cover -> "çalılık"; "on your six" ->
+          "arkandayım"; "helo" -> "helikopter"; "RTB" -> "üsse dönüyor"; "boost me up" -> "beni yukarı kaldır";
+          "Got it!" after finding or picking something up -> "Buldum!" / "Aldım!", otherwise "Anladım".
+          A one-word order ("Lift.", "Push.", "Jump!") is a command to the listener, not a noun.
         """;
 
     /// <summary>Dublaj açıkken sistem talimatına eklenir: her satırın seslendirilecek hali, tonu ve konuşanın cinsiyeti.</summary>
@@ -93,6 +99,8 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
           a bracketed line ("[He's heading to the helo!]") spoken over the main speakers. Background lines are voiced
           quietly at the same time as the main line instead of waiting their turn. A line alone on screen is never
           background.
+        - "guessed": true when OCR mistakes made you guess any word of the line (letters swapped, words run together
+          or cut off: "Kal CODY that", "He's clown", "Watchyour fire"); false when the English was read cleanly.
         - Keep one entry per input line. If a sentence is split over two input lines, translate each part on its own
           entry anyway (the first may end mid-sentence). For a line too garbled to read, use "text": "" and
           "dialogue": false.
@@ -100,8 +108,8 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
 
     internal const string DubbingSchema = """
         {"type":"object","additionalProperties":false,"required":["lines"],"properties":{"lines":{"type":"array","items":{
-        "type":"object","additionalProperties":false,"required":["speaker","text","spoken","emotion","gender","dialogue","background"],"properties":{
-        "background":{"type":"boolean"},
+        "type":"object","additionalProperties":false,"required":["speaker","text","spoken","emotion","gender","dialogue","background","guessed"],"properties":{
+        "background":{"type":"boolean"},"guessed":{"type":"boolean"},
         "speaker":{"type":"string"},"text":{"type":"string"},"spoken":{"type":"string"},
         "emotion":{"type":"string","enum":["neutral","happy","sad","angry","surprised","calm"]},
         "gender":{"type":"string","enum":["female","male","unknown"]},"dialogue":{"type":"boolean"}}}}}}
@@ -403,7 +411,8 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
         ParseEntries(source, json) is { } parsed ? Assemble(parsed.Entries) : null;
 
     /// <summary>Bir ekran satırının çevirisi: altyazısı, arayüz yazısı mı (gösterilmez, seslendirilmez), konuşması.</summary>
-    internal sealed record LineResult(string Subtitle, bool Interface, SpokenLine? Speech);
+    /// <c>Guessed</c>: İngilizce bozuk okunmuştu, Claude bazı sözcükleri tahmin etti (kalıcı hafızaya yazılmaz).
+    internal sealed record LineResult(string Subtitle, bool Interface, SpokenLine? Speech, bool Guessed = false);
 
     /// <summary>
     /// Satır sonuçlarından altyazı ve konuşma. Arayüz yazıları (silah adı, zırh göstergesi, kumanda ipucu) ve okunamayan
@@ -444,6 +453,7 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
                     results.Add(new LineResult("", true, null));
                     continue;
                 }
+                var guessed = entry.TryGetProperty("guessed", out var guess) && guess.ValueKind == System.Text.Json.JsonValueKind.True;
                 var pieces = aligned ? SubtitleSegmenter.Split(english[i]) : new List<SubtitleSegmenter.Piece>();
                 // Konuşmacı: Claude'un bulduğu ad (iki noktasız adlar da: "Lt. West Okay…"), yoksa "AD:" etiketi.
                 var named = entry.TryGetProperty("speaker", out var who) ? (who.GetString() ?? "").Trim().TrimEnd(':').Trim() : "";
@@ -457,7 +467,7 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
                 // da gösterilmez. Ekranda yalnız onlar varsa (ör. "NEW YORK CITY") gösterilir.
                 if (entry.TryGetProperty("dialogue", out var dialogue) && dialogue.ValueKind == System.Text.Json.JsonValueKind.False)
                 {
-                    results.Add(new LineResult(subtitle, true, null));
+                    results.Add(new LineResult(subtitle, true, null, guessed));
                     continue;
                 }
                 var newTurn = pieces.Count > 0 && !pieces[0].Translate && "-–—".Contains(pieces[0].Text[0]);
@@ -467,7 +477,7 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
                 spoken = spoken.TrimStart('-', '–', '—', ' ');
                 if (!spoken.Any(char.IsLetter))
                 {
-                    results.Add(new LineResult(subtitle, false, null));
+                    results.Add(new LineResult(subtitle, false, null, guessed));
                     continue;
                 }
                 var emotion = entry.GetProperty("emotion").GetString() switch
@@ -489,7 +499,7 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
                 // Satırlar eşleşmediyse İngilizcesi bilinmez; tekrar önleme Türkçe metne bakar.
                 var background = entry.TryGetProperty("background", out var behind) && behind.ValueKind == System.Text.Json.JsonValueKind.True;
                 results.Add(new LineResult(subtitle, false,
-                    new SpokenLine(said.Length > 0 ? said : text, spoken, speaker, newTurn, emotion, gender, background)));
+                    new SpokenLine(said.Length > 0 ? said : text, spoken, speaker, newTurn, emotion, gender, background), guessed));
             }
             return (results, aligned);
         }
@@ -551,12 +561,21 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
     {
         var key = TextMatch.Normalize(line);
         if (key.Length == 0) return null;
+        // Önce birebir aynı satır (oturumda, sonra kalıcı hafızada); benzer satır ancak hiçbiri yoksa. Önceden benzer
+        // eşleşme önce bakılıyordu: hafızada doğru çevirisi olan "Kal Watch your step" başka bir satırın çevirisiyle çıktı.
         lock (_linesGate)
         {
             for (var i = _lines.Count - 1; i >= 0; i--)
-                if (SameStoredLine(key, _lines[i].Key)) return _lines[i].Result;
+                if (_lines[i].Key == key) return _lines[i].Result;
         }
-        return _memory?.Lookup(key);
+        if (_memory?.Lookup(key) is { } remembered) return remembered;
+        lock (_linesGate)
+        {
+            // Tahminle çevrilmiş (bozuk okunmuş) satır başka okumalarla eşleşmez; yalnız birebir aynı okumada kullanılır.
+            for (var i = _lines.Count - 1; i >= 0; i--)
+                if (!_lines[i].Result.Guessed && SameStoredLine(key, _lines[i].Key)) return _lines[i].Result;
+        }
+        return null;
     }
 
     /// <summary>Şu an başka bir istekte çevrilen satırlar (anahtar → istek bitince tamamlanan görev).</summary>
@@ -605,7 +624,9 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
             _lines.Add((key, result));
             if (_lines.Count > 256) _lines.RemoveAt(0);
         }
-        _memory?.Store(key, result);
+        // Bozuk okunup tahminle çevrilen satır kalıcı hafızaya yazılmaz ("Kal CODY that" → "Bunu bir kenara bırak"
+        // sonraki oturumlarda da çıkardı).
+        if (!result.Guessed) _memory?.Store(key, result);
     }
 
     /// <summary>
@@ -614,13 +635,23 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
     /// </summary>
     internal static bool SameStoredLine(string a, string b)
     {
+        if (a == b) return a.Length > 0;
+        var (shortKey, longKey) = a.Length <= b.Length ? (a, b) : (b, a);
+        // Başa eklenen konuşmacı adı ya da kesik ilk/son sözcük: en çok iki sözcük fazlası, sözcük sınırında.
+        // "fastest route is the north door" / "… it may be flooded" eşleşmez (sonraki cümle çevrilmeden kalıyordu).
+        if (shortKey.Length >= 3 && shortKey.Length >= longKey.Length * 0.5)
+        {
+            var extra = longKey.EndsWith(" " + shortKey, StringComparison.Ordinal) ? longKey[..^(shortKey.Length + 1)]
+                : longKey.StartsWith(shortKey + " ", StringComparison.Ordinal) ? longKey[(shortKey.Length + 1)..] : null;
+            if (extra is not null && extra.Split(' ').Length <= 2) return true;
+        }
+        // Kısa satırda tek harf anlamı değiştirir: "he s down" / "he s clown", "copy that" / "cody that",
+        // "one target" / "two targets" (claude.15 kaydında hepsi yanlış çeviriyle gösterildi). Orada yalnız boşluk
+        // farkı ("watchyour fire") aynı sayılır; bozuk okuma bir kez daha çevrilir.
+        if (Math.Min(shortKey.Split(' ').Length, longKey.Split(' ').Length) < 5)
+            return shortKey.Replace(" ", "") == longKey.Replace(" ", "");
         if (TextMatch.IsSameSubtitle(a, b)) return true;
-        int shorter = Math.Min(a.Length, b.Length), longer = Math.Max(a.Length, b.Length);
-        if (shorter >= 3 && shorter >= longer * 0.6
-            && (a.EndsWith(b, StringComparison.Ordinal) || b.EndsWith(a, StringComparison.Ordinal)
-                || a.StartsWith(b, StringComparison.Ordinal) || b.StartsWith(a, StringComparison.Ordinal)))
-            return true;
-        return shorter >= 16 && TextMatch.IsSimilar(a, b, 0.8);
+        return shortKey.Length >= 16 && TextMatch.IsSimilar(a, b, 0.8);
     }
 
     /// <summary>Konuşmacı etiketlerindeki isimleri ("MOON: …") bir sonraki isteklerde tutarlı yazılsın diye saklar.</summary>
