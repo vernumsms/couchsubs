@@ -510,6 +510,15 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         Changed(nameof(Tv));
     }
 
+    /// <summary>PS5 modemden yeni IP aldı ve oturum onu ağda yeniden buldu; bir sonraki açılışta da yeni adres kullanılır.</summary>
+    public void ConsoleMoved(RegisteredConsole moved)
+    {
+        if (console is null) return;
+        console = console.WithHost(moved.Host);
+        store.Save(StoreKeys.Console, console);
+        Changed(nameof(Console));
+    }
+
     public void StartModelDownload()
     {
         if (ModelInstalled || modelDownload is { IsCompleted: false }) return;
@@ -761,6 +770,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             var stream = services.MakeStream(console, accountId);
             stream.StateChanged += state => post(() => SessionStateChanged(state));
             stream.FrameReceived += HandleFrame;
+            if (stream is IConsoleRelocator relocator) relocator.ConsoleMoved += moved => post(() => ConsoleMoved(moved));
             if (stream is IGameAudioSource audio && settings.ListenToGame && GameSpeechInstalled) StartListening(audio);
             stream.Start();
             session = stream;

@@ -80,6 +80,13 @@ public interface IStreamSession : IDisposable
     void ReconnectNow();
 }
 
+/// <summary>PS5'in adresi değiştiğinde (modem yeni IP verdiğinde) onu ağda yeniden bulan oturum.</summary>
+public interface IConsoleRelocator
+{
+    /// <summary>PS5 yeni adreste bulundu; kalıcı olarak kaydedilmeli. Oturum kuyruğunda çağrılır.</summary>
+    event Action<RegisteredConsole>? ConsoleMoved;
+}
+
 /// <summary>Oyun sesini de verebilen oturum (altyazısız konuşmaları dinlemek için).</summary>
 public interface IGameAudioSource
 {

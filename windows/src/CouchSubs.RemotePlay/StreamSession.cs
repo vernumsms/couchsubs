@@ -72,8 +72,16 @@ internal sealed class SerialQueue : IDisposable
 
 /// <summary>PS5'e (ikinci hesapla) Remote Play bağlantısı kurar ve görüntüyü kare kare verir.
 /// Ses kapalıdır, kol girdisi gönderilmez. Bağlantı koparsa kendiliğinden yeniden bağlanır.</summary>
-public sealed class StreamSession : IStreamSession, IGameAudioSource
+public sealed class StreamSession : IStreamSession, IGameAudioSource, IConsoleRelocator
 {
+    /// <inheritdoc />
+    public event Action<RegisteredConsole>? ConsoleMoved;
+
+    /// <summary>Kayıtlı adreste yanıt yoksa tüm ağ en sık bu aralıkla taranır (PS5 tamamen kapalıysa boşuna taramamak için).</summary>
+    internal static readonly TimeSpan RelocateInterval = TimeSpan.FromSeconds(30);
+    /// <summary>Yalnız kuyrukta okunup yazılır.</summary>
+    private DateTime lastRelocate = DateTime.MinValue;
+
     /// <inheritdoc />
     public bool ListenToAudio { get; set; }
     /// <inheritdoc />
@@ -87,7 +95,8 @@ public sealed class StreamSession : IStreamSession, IGameAudioSource
     /// <summary>Oturum kuyruğunun iş parçacığında çağrılır.</summary>
     public event Action<SessionState>? StateChanged;
 
-    private readonly RegisteredConsole console;
+    /// <summary>Yalnız kuyrukta değiştirilir (PS5 yeni adreste bulununca).</summary>
+    private RegisteredConsole console;
     private readonly byte[] accountId;
     private readonly SerialQueue queue = new("CouchSubs stream session");
     private readonly FrameDelivery delivery;
@@ -185,6 +194,8 @@ public sealed class StreamSession : IStreamSession, IGameAudioSource
 
         // PS5 uyuyorsa uyandır; uyanmayı kuyruğu bloklamadan, aralıklı kontrollerle bekle.
         var info = ConsoleDiscovery.Discover(console.Host, TimeSpan.FromSeconds(2)).FirstOrDefault();
+        if (info is null && Relocate(current) is { } found) info = found;
+        if (!IsCurrent(current)) return;
         if (info is { IsAwake: false })
         {
             try { ConsoleDiscovery.Wake(console); }
@@ -193,6 +204,37 @@ public sealed class StreamSession : IStreamSession, IGameAudioSource
             return;
         }
         OpenSession(current);
+    }
+
+    /// <summary>Kayıtlı adreste PS5 yanıt vermediğinde tüm yerel ağı tarar; kayıtlı PS5 başka adreste
+    /// bulunursa adresi günceller ve ConsoleMoved ile bildirir. Dinlenme modundaki PS5 de aramaya yanıt verir.</summary>
+    private ConsoleInfo? Relocate(int current)
+    {
+        if (DateTime.UtcNow - lastRelocate < RelocateInterval) return null;
+        lastRelocate = DateTime.UtcNow;
+        IReadOnlyList<ConsoleInfo> all;
+        try { all = ConsoleDiscovery.Discover(null, TimeSpan.FromSeconds(3)); }
+        catch (Exception error)
+        {
+            RemotePlayLog.Write(1, $"PS5 aranamadı: {error.Message}");
+            return null;
+        }
+        if (!IsCurrent(current) || PickMoved(console, all) is not { } found) return null;
+        RemotePlayLog.Write(2, $"PS5 yeni adreste bulundu: {console.Host} -> {found.Host}");
+        console = console.WithHost(found.Host);
+        try { ConsoleMoved?.Invoke(console); }
+        catch (Exception error) { RemotePlayLog.Write(0, $"ConsoleMoved handler: {error}"); }
+        return found;
+    }
+
+    /// <summary>Taramada bulunanlardan kayıtlı PS5'i seçer: önce aynı ad; ağda tek PS5 varsa (ad değişmiş olabilir) o.
+    /// Kayıt anahtarı başka bir PS5'te geçmeyeceği için yanlış seçim en kötü bağlantı reddiyle sonuçlanır.</summary>
+    internal static ConsoleInfo? PickMoved(RegisteredConsole console, IReadOnlyList<ConsoleInfo> found)
+    {
+        var others = found.Where(c => c.Host != console.Host).ToList();
+        var named = others.Where(c => string.Equals(c.Name, console.Name, StringComparison.Ordinal)).ToList();
+        if (named.Count == 1) return named[0];
+        return named.Count == 0 && others.Count == 1 ? others[0] : null;
     }
 
     private void WaitForWake(int current, DateTime deadline)

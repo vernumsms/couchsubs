@@ -22,6 +22,30 @@ public class ReconnectPolicyTests
     }
 }
 
+public class ConsoleRelocationTests
+{
+    private static readonly RegisteredConsole Saved = new("192.168.1.15", "PS5-365", new byte[16], new byte[16]);
+
+    [Fact]
+    public void PicksSameNameAtNewAddress() =>
+        Assert.Equal("192.168.1.6", StreamSession.PickMoved(Saved, [new("192.168.1.6", "PS5-365", false), new("192.168.1.9", "PS5-Diger", true)])?.Host);
+
+    [Fact]
+    public void PicksOnlyConsoleWhenNameChanged() =>
+        Assert.Equal("192.168.1.6", StreamSession.PickMoved(Saved, [new("192.168.1.6", "Salon", true)])?.Host);
+
+    [Fact]
+    public void DoesNotGuessBetweenUnknownConsoles() =>
+        Assert.Null(StreamSession.PickMoved(Saved, [new("192.168.1.6", "A", true), new("192.168.1.7", "B", true)]));
+
+    [Fact]
+    public void IgnoresSavedAddressAndEmptyScan()
+    {
+        Assert.Null(StreamSession.PickMoved(Saved, []));
+        Assert.Null(StreamSession.PickMoved(Saved, [new("192.168.1.15", "PS5-365", true)]));
+    }
+}
+
 public class RegisteredConsoleTests
 {
     [Fact]
