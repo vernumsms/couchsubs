@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.9';
+  var APP_VERSION = '0.9.10';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -25,6 +25,8 @@
   var placement = 'fixed';
   // Gösterilen satırın oyundaki İngilizce altyazının yeri (ekrana oranla), bilinmiyorsa null.
   var currentBox = null;
+  // Altyazı ekranın yanlarındaki bu payın içine girmez: oyunların haritası (GTA, CoD) ve göstergeleri köşelerde durur.
+  var SIDE_SAFE = 0.19;
 
   // Önceki satır bu süreden kısa göründüyse okunamamış olabilir; yeni satırın üstünde bir süre daha kalır.
   var PREVIOUS_HOLD_MS = 2500;
@@ -231,8 +233,8 @@
     var el = $('subtitle');
     var cover = $('subtitle-cover');
     var box = placement === 'fixed' ? null : currentBox;
-    el.style.left = '8%';
-    el.style.right = '8%';
+    el.style.left = (SIDE_SAFE * 100) + '%';
+    el.style.right = (SIDE_SAFE * 100) + '%';
     el.style.top = 'auto';
     el.style.bottom = bottomPercent + '%';
     cover.className = 'hidden';
@@ -250,8 +252,8 @@
     // Yatayda İngilizce satırın ortasına hizalanır.
     var center = (box.left + box.right) / 2;
     var half = Math.max(0.3, Math.min(center, 1 - center));
-    el.style.left = (Math.max(0.02, center - half) * 100) + '%';
-    el.style.right = (Math.max(0.02, 1 - center - half) * 100) + '%';
+    el.style.left = (Math.max(SIDE_SAFE, center - half) * 100) + '%';
+    el.style.right = (Math.max(SIDE_SAFE, 1 - center - half) * 100) + '%';
 
     if (mode === 'cover') {
       // İngilizce yazı koyu bir zeminle örtülür, çeviri onun ortasına gelir.
@@ -284,8 +286,8 @@
     var viewWidth = document.documentElement.clientWidth || window.innerWidth || 1920;
     var visible = rect.height > 0 && rect.top >= -2 && rect.bottom <= viewHeight + 2 && rect.right > 0 && rect.left < viewWidth;
     if (visible) return;
-    el.style.left = '8%';
-    el.style.right = '8%';
+    el.style.left = (SIDE_SAFE * 100) + '%';
+    el.style.right = (SIDE_SAFE * 100) + '%';
     el.style.top = 'auto';
     el.style.bottom = bottomPercent + '%';
     cover.className = 'hidden';
