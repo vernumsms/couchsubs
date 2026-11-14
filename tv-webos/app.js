@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.10';
+  var APP_VERSION = '0.9.11';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -27,6 +27,8 @@
   var currentBox = null;
   // Altyazı ekranın yanlarındaki bu payın içine girmez: oyunların haritası (GTA, CoD) ve göstergeleri köşelerde durur.
   var SIDE_SAFE = 0.19;
+  // Ayarlar'daki yazı boyu; "üstünü örtsün" yerleşiminde yazı oyunun altyazısının boyunu alır, öbürlerinde bu kullanılır.
+  var userFontSize = 46;
 
   // Önceki satır bu süreden kısa göründüyse okunamamış olabilir; yeni satırın üstünde bir süre daha kalır.
   var PREVIOUS_HOLD_MS = 2500;
@@ -239,6 +241,7 @@
     el.style.bottom = bottomPercent + '%';
     cover.className = 'hidden';
     document.documentElement.className = '';
+    $('subtitle-text').style.fontSize = userFontSize + 'px';
     // Altyazı yokken (ör. ayar değişince yeniden yerleşirken) örtü tek başına boş siyah kutu olarak kalmasın.
     if (!box || el.className === 'hidden') return;
 
@@ -256,17 +259,22 @@
     el.style.right = (Math.max(SIDE_SAFE, 1 - center - half) * 100) + '%';
 
     if (mode === 'cover') {
-      // İngilizce yazı koyu bir zeminle örtülür, çeviri onun ortasına gelir.
-      // Yanlarda daha geniş pay: oyunun renkli konuşmacı adları ("Ko", "Ri") yazı tanımanın kutusunun dışında
+      // Çeviri oyunun İngilizce altyazısının yerine geçer: aynı genişlikte, aynı yerde ve aynı yazı boyunda.
+      // Yanlarda küçük pay: oyunun renkli konuşmacı adları ("Ko", "Ri") yazı tanımanın kutusunun dışında
       // kalıp örtünün kenarından görünüyordu.
-      var padX = 0.03, padY = 0.014;
-      cover.style.left = ((box.left - padX) * 100) + '%';
+      var padX = 0.012, padY = 0.01;
+      var left = Math.max(0, box.left - padX);
+      var right = Math.min(1, box.right + padX);
+      el.style.left = (left * 100) + '%';
+      el.style.right = ((1 - right) * 100) + '%';
+      cover.style.left = (left * 100) + '%';
       cover.style.top = ((box.top - padY) * 100) + '%';
-      cover.style.width = ((box.right - box.left + 2 * padX) * 100) + '%';
+      cover.style.width = ((right - left) * 100) + '%';
       cover.style.height = ((box.bottom - box.top + 2 * padY) * 100) + '%';
       cover.className = '';
       // Örtülürken çevirinin zemini örtüyle aynı renkte olur: yarı saydam şeridin içinde ayrı bir siyah kutu görünmez.
       document.documentElement.className = 'covering';
+      fitToGameText($('subtitle-text'), box, height);
       var middle = (1 - (box.top + box.bottom) / 2) * height;
       el.style.bottom = Math.max(0, Math.round(middle - $('subtitle-text').offsetHeight / 2)) + 'px';
     } else if (mode === 'above') {
@@ -278,6 +286,22 @@
     keepOnScreen(el, cover);
   }
 
+  // Yazı boyu oyundaki satırın yüksekliğinden seçilir (bilgisayar "line" gönderir; eski sürümde kutu yüksekliği
+  // satır sayısına bölünür). Türkçe uzun gelip oyunun kutusundan çok taşarsa biraz küçülür, en çok %75'ine kadar.
+  function fitToGameText(text, box, height) {
+    var boxHeight = (box.bottom - box.top) * height;
+    var lines = String(text.textContent).split('\n').length;
+    var line = typeof box.line === 'number' && box.line > 0 ? box.line * height : boxHeight / Math.max(1, lines);
+    var size = Math.max(18, Math.min(96, Math.round(line * 0.95)));
+    var smallest = Math.max(18, Math.round(size * 0.75));
+    text.style.fontSize = size + 'px';
+    var limit = Math.max(boxHeight * 1.35, size * 1.3 * (lines + 1));
+    while (text.offsetHeight > limit && size > smallest) {
+      size -= 2;
+      text.style.fontSize = size + 'px';
+    }
+  }
+
   // Bazı TV'lerde (Samsung, Android TV) sayfanın bildirdiği yükseklik ekranla uyuşmayabiliyor; altyazı ekranın
   // dışına düşerse hiç görünmüyordu. Yerleştirilen altyazı görünür alanda değilse sabit yüksekliğe döner.
   function keepOnScreen(el, cover) {
@@ -286,6 +310,8 @@
     var viewWidth = document.documentElement.clientWidth || window.innerWidth || 1920;
     var visible = rect.height > 0 && rect.top >= -2 && rect.bottom <= viewHeight + 2 && rect.right > 0 && rect.left < viewWidth;
     if (visible) return;
+    document.documentElement.className = '';
+    $('subtitle-text').style.fontSize = userFontSize + 'px';
     el.style.left = (SIDE_SAFE * 100) + '%';
     el.style.right = (SIDE_SAFE * 100) + '%';
     el.style.top = 'auto';
@@ -298,6 +324,7 @@
     // Görünüm göndermeyen eski masaüstü sürümünde modern kalır.
     if (style.theme === 'classic' || style.theme === 'modern') document.body.className = 'theme-' + style.theme;
     if (style.fontSize) {
+      userFontSize = style.fontSize;
       $('subtitle-text').style.fontSize = style.fontSize + 'px';
       $('subtitle-prev-text').style.fontSize = Math.round(style.fontSize * 0.8) + 'px';
     }

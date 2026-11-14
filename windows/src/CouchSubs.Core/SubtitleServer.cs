@@ -180,10 +180,16 @@ public sealed class SubtitleServer(int port = 8787) : ISubtitleSender, IDisposab
     /// <summary>TV'deki "ekranı çevir" çevirilerini kaldırır (altyazıya dokunmaz).</summary>
     public void ClearScreen() => Broadcast(Frame("screen-clear", new SortedDictionary<string, object>()));
 
-    private static SortedDictionary<string, object> BoxJson(TextBox b) => new()
+    private static SortedDictionary<string, object> BoxJson(TextBox b)
     {
-        ["bottom"] = Round(b.Bottom), ["left"] = Round(b.Left), ["right"] = Round(b.Right), ["top"] = Round(b.Top),
-    };
+        var json = new SortedDictionary<string, object>
+        {
+            ["bottom"] = Round(b.Bottom), ["left"] = Round(b.Left), ["right"] = Round(b.Right), ["top"] = Round(b.Top),
+        };
+        // Oyundaki satırın yüksekliği: TV çeviriyi aynı yazı boyunda gösterir.
+        if (b.Line > 0) json["line"] = Round(b.Line);
+        return json;
+    }
 
     /// <summary>Dosyayı <paramref name="path"/> adresinden verir ("/voices/male_1.wav").</summary>
     public void Publish(byte[] data, string path, string type = "audio/wav")

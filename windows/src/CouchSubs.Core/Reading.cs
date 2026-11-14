@@ -5,6 +5,13 @@ namespace CouchSubs.Core;
 /// <summary>Yazının yeri, içinde bulunduğu alanın kenarlarına oranla (0–1, üstten ve soldan).</summary>
 public readonly record struct TextBox(double Left, double Top, double Right, double Bottom)
 {
+    /// <summary>İçindeki yazının bir satırının yüksekliği (aynı oranla), bilinmiyorsa 0; TV çevirinin yazı boyunu buna göre seçer.</summary>
+    public double Line { get; init; }
+
+    // Eşitlik yalnız yere bakar: satır yüksekliği yalnız TV'ye bilgi olarak gider.
+    public bool Equals(TextBox other) => Left == other.Left && Top == other.Top && Right == other.Right && Bottom == other.Bottom;
+    public override int GetHashCode() => HashCode.Combine(Left, Top, Right, Bottom);
+
     public TextBox Union(TextBox other) =>
         new(Math.Min(Left, other.Left), Math.Min(Top, other.Top), Math.Max(Right, other.Right), Math.Max(Bottom, other.Bottom));
 
@@ -13,7 +20,10 @@ public readonly record struct TextBox(double Left, double Top, double Right, dou
     {
         var width = area.Right - area.Left;
         var height = area.Bottom - area.Top;
-        return new(area.Left + (Left * width), area.Top + (Top * height), area.Left + (Right * width), area.Top + (Bottom * height));
+        return new(area.Left + (Left * width), area.Top + (Top * height), area.Left + (Right * width), area.Top + (Bottom * height))
+        {
+            Line = Line * height,
+        };
     }
 
     /// <summary>
@@ -65,7 +75,11 @@ public sealed partial class Reading
             TextBox? total = null;
             foreach (var line in Lines)
                 if (line.Box is { } box) total = total?.Union(box) ?? box;
-            return total;
+            if (total is not { } whole) return null;
+            // Satır yüksekliği: satırların ortanca yüksekliği (tek tük büyük harfsiz ya da taşan satır yanıltmasın).
+            var heights = Lines.Where(line => line.Box is not null).Select(line => line.Box!.Value.Bottom - line.Box!.Value.Top)
+                .Where(h => h > 0).Order().ToList();
+            return heights.Count == 0 ? whole : whole with { Line = heights[heights.Count / 2] };
         }
     }
 

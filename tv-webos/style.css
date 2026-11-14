@@ -107,6 +107,10 @@ html, body {
 /* Örtme yerleşiminde örtü ile şerit tek parça görünür: aynı renk, aynı köşe. */
 .theme-modern #subtitle-cover { border-radius: 18px; background: rgba(14, 15, 18, 0.97); }
 .covering .theme-modern #subtitle-text { background: rgba(14, 15, 18, 0.97) !important; }
+/* Örterken çeviri oyunun altyazısıyla aynı genişlikte durur: geniş iç boşluk satırı daraltıp fazladan alt satıra
+   itiyordu. Gölge ve çerçeve de örtünün dışına taşmasın. */
+.covering #subtitle-text,
+.covering .theme-modern #subtitle-text { padding: 2px 6px; line-height: 1.2; border: 0; box-shadow: none; }
 /* Klasik görünümde ad ayrı renk almaz. */
 .theme-classic .who { color: inherit; }
 
