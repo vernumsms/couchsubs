@@ -365,6 +365,19 @@ public class ClaudeTranslatorTests
         Assert.Equal(("News Reporter", "Tanıklar ağır topçu ateşi ve hasar bildiriyor."), (line.Speaker, line.Turkish));
     }
 
+    /// Dublaj kapalıyken kısa şema istenir (ses, ton, cinsiyet alanları yok) ve yanıt yine okunur.
+    [Fact]
+    public async Task WithoutDubbingTheShortSubtitleSchemaIsUsed()
+    {
+        const string json = """{"lines":[{"speaker":"Franklin","text":"Yok be kanka.","dialogue":true,"guessed":false}]}""";
+        var claude = new FakeClaude(_ => json);
+        var translator = new ClaudeTranslator(claude, new FakeLocal(), dubbing: () => false);
+
+        Assert.Equal("Franklin: Yok be kanka.", await (await translator.TranslateProgressivelyAsync("Franklin: Nah, homie.")).Refined);
+        Assert.Equal(ClaudeTranslator.SubtitleSchema, Assert.Single(claude.Schemas));
+        Assert.DoesNotContain("Voice-over", claude.Requests[0].System);
+    }
+
     /// Kumanda ipucu ("MOUNT") konuşmanın yanında altyazıda gösterilmez; ekranda yalnız arayüz yazısı varsa gösterilir.
     [Fact]
     public async Task InterfaceTextIsHiddenNextToDialogue()

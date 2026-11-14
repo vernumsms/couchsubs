@@ -31,6 +31,8 @@ public sealed class AnthropicCompletion : IClaudeCompletion
         Timeout = TimeSpan.FromSeconds(8),
     };
 
+    public string? LastUsage { get; private set; }
+
     public Task<string> CompleteAsync(string system, string user, CancellationToken cancellationToken) =>
         SendAsync(system, user, null, cancellationToken);
 
@@ -47,7 +49,12 @@ public sealed class AnthropicCompletion : IClaudeCompletion
                 Model = _model,
                 // Uyarlanabilir düşünme de bu sınıra dahildir; çeviri kısa olsa da kesilmesin.
                 MaxTokens = 2048,
-                System = system,
+                // Sistem talimatı her istekte aynı: önbellekten okunur (Haiku 5.5'te en az 512 token). Her satırda
+                // yaklaşık 2000 token baştan işleniyordu; önbellekle yanıt daha erken başlar, istek de ucuzlar.
+                System = new List<TextBlockParam>
+                {
+                    new() { Text = system, CacheControl = new CacheControlEphemeral() },
+                },
                 // Altyazı çevirisi basit ve gecikmeye duyarlı: düşük efor. Haiku'da düşünme kapatılır (daha hızlı ve
                 // ucuz; Haiku 5.5 buna düşük eforda izin verir). Opus 5.5'te düşünme kapatılamaz, düşük eforla sınırlanır.
                 // Dublajda yanıt verilen şemaya uyan JSON'dur (yapılandırılmış çıktı).
@@ -65,6 +72,8 @@ public sealed class AnthropicCompletion : IClaudeCompletion
             throw new ClaudeException(state, error.Message);
         }
 
+        var used = response.Usage;
+        LastUsage = $"giriş {used.InputTokens}, önbellekten {used.CacheReadInputTokens ?? 0}, önbelleğe {used.CacheCreationInputTokens ?? 0}, çıktı {used.OutputTokens}";
         if (response.StopReason == "refusal") throw new ClaudeException(OnlineKeyState.Unreachable, ClaudeException.Refusal);
         return string.Concat(response.Content.Select(block => block.Value).OfType<TextBlock>().Select(text => text.Text));
     }

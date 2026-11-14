@@ -14,6 +14,9 @@ public interface IClaudeCompletion
 
     /// <summary>Yanıt verilen JSON şemasına uyar (yapılandırılmış çıktı); JSON metni döner.</summary>
     Task<string> CompleteJsonAsync(string system, string user, string schema, CancellationToken cancellationToken);
+
+    /// <summary>Son yanıtın token sayıları (kayıt için: önbellek çalışıyor mu, çıktı ne kadar); bilinmiyorsa null.</summary>
+    string? LastUsage => null;
 }
 
 /// <summary>Claude isteğinin kullanıcıya gösterilebilecek sonucu.</summary>
@@ -104,6 +107,32 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
         - Keep one entry per input line. If a sentence is split over two input lines, translate each part on its own
           entry anyway (the first may end mid-sentence). For a line too garbled to read, use "text": "" and
           "dialogue": false.
+        """;
+
+    /// <summary>
+    /// Dublaj kapalıyken sistem talimatına eklenir: yalnız altyazı için gereken alanlar. Ses, ton ve cinsiyet alanları
+    /// boşuna yazılıyordu; daha kısa yanıt, çevirinin daha erken gelmesi demek.
+    /// </summary>
+    internal const string SubtitlePrompt = """
+
+        Reply with JSON: one entry in "lines" per input line, in the same order.
+        - "speaker": the speaker's name as written at the start of the line (with or without a colon, including any
+          rank, e.g. "Lt. West"), or "" when the line does not start with a name.
+        - "text": the subtitle translation of what is said, without the speaker's name.
+        - "dialogue": true when the line is something a character says; false for game interface text that is not
+          spoken - button prompts ("MOUNT", "EQUIP"), ammo or score counters, weapon or item names, objectives, save
+          notices, menu text.
+        - "guessed": true when OCR mistakes made you guess any word of the line (letters swapped, words run together
+          or cut off: "Kal CODY that", "He's clown", "Watchyour fire"); false when the English was read cleanly.
+        - Keep one entry per input line. If a sentence is split over two input lines, translate each part on its own
+          entry anyway (the first may end mid-sentence). For a line too garbled to read, use "text": "" and
+          "dialogue": false.
+        """;
+
+    internal const string SubtitleSchema = """
+        {"type":"object","additionalProperties":false,"required":["lines"],"properties":{"lines":{"type":"array","items":{
+        "type":"object","additionalProperties":false,"required":["speaker","text","dialogue","guessed"],"properties":{
+        "guessed":{"type":"boolean"},"speaker":{"type":"string"},"text":{"type":"string"},"dialogue":{"type":"boolean"}}}}}}
         """;
 
     internal const string DubbingSchema = """
@@ -280,7 +309,9 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
             {
                 try
                 {
-                    var json = await _claude.CompleteJsonAsync(SystemPrompt + DubbingPrompt, UserMessage(request), DubbingSchema, timeout.Token)
+                    var json = await (voiced
+                            ? _claude.CompleteJsonAsync(SystemPrompt + DubbingPrompt, UserMessage(request), DubbingSchema, timeout.Token)
+                            : _claude.CompleteJsonAsync(SystemPrompt + SubtitlePrompt, UserMessage(request), SubtitleSchema, timeout.Token))
                         .ConfigureAwait(false);
                     if (ParseEntries(request, json) is not { } parsed)
                     {
@@ -346,7 +377,8 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
             if (missing.Count > 0)
                 _log?.Write(dubbing && voiced ? "claude+dublaj" : "claude", clock.ElapsedMilliseconds,
                     missing.Count == allLines.Length ? source : $"{request}  (+{allLines.Length - missing.Count} satır önbellekten)",
-                    dubbing && voiced ? translated + "  [ses: " + string.Join(" / ", speech.Select(l => $"{l.Emotion?.ToString() ?? "nötr"},{l.Gender?.ToString() ?? "?"}{(l.Background ? ",arka" : "")}: {l.Turkish}")) + "]" : translated);
+                    (dubbing && voiced ? translated + "  [ses: " + string.Join(" / ", speech.Select(l => $"{l.Emotion?.ToString() ?? "nötr"},{l.Gender?.ToString() ?? "?"}{(l.Background ? ",arka" : "")}: {l.Turkish}")) + "]" : translated)
+                    + (_claude.LastUsage is { } usage ? $"  [{usage}]" : ""));
             LastError = null;
             // Konuşmacı adları sonraki isteklerde "Names" listesiyle gönderilir: adlar tutarlı yazılır ve tanınır.
             foreach (var name in speech.Select(line => line.Speaker).OfType<string>())
@@ -472,7 +504,8 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
                 }
                 var newTurn = pieces.Count > 0 && !pieces[0].Translate && "-–—".Contains(pieces[0].Text[0]);
                 // Konuşma metni boşsa altyazı okunur (köşeli parantez ve simgeler olmadan).
-                var spoken = (entry.GetProperty("spoken").GetString() ?? "").Trim();
+                // Dublaj kapalıyken yanıtta ses alanları yoktur: altyazı okunur, ton ve cinsiyet bilinmez.
+                var spoken = entry.TryGetProperty("spoken", out var say) ? (say.GetString() ?? "").Trim() : "";
                 if (spoken.Length == 0) spoken = text.Replace("[", "").Replace("]", "");
                 spoken = spoken.TrimStart('-', '–', '—', ' ');
                 if (!spoken.Any(char.IsLetter))
@@ -480,7 +513,7 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
                     results.Add(new LineResult(subtitle, false, null, guessed));
                     continue;
                 }
-                var emotion = entry.GetProperty("emotion").GetString() switch
+                var emotion = (entry.TryGetProperty("emotion", out var mood) ? mood.GetString() : null) switch
                 {
                     "happy" => SpeechEmotion.Happy,
                     "sad" => SpeechEmotion.Sad,
@@ -489,7 +522,7 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
                     "calm" => SpeechEmotion.Calm,
                     _ => (SpeechEmotion?)null,
                 };
-                var gender = entry.GetProperty("gender").GetString() switch
+                var gender = (entry.TryGetProperty("gender", out var sex) ? sex.GetString() : null) switch
                 {
                     "female" => VoiceGender.Female,
                     "male" => VoiceGender.Male,
