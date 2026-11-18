@@ -92,6 +92,10 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                     break;
                 case StabilizerKind.None:
                     KeepAlive();
+                    // Tam cümle ilk karede okundu: çevirisi doğrulanmadan başlar, ikinci karede hazır beklenir.
+                    if (stabilizer.Early is { } early && translator is IPrefetchingTranslator prefetching
+                        && FindRecent(TextMatch.Normalize(early), Environment.TickCount64) is null)
+                        prefetching.Prefetch(early);
                     break;
                 case StabilizerKind.Translate:
                     // Çevirisi henüz sürmekte olan replik yeniden okunduysa (konuşmacı adı bir görünüp bir kayboldu,

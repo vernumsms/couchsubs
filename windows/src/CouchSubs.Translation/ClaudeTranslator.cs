@@ -17,6 +17,9 @@ public interface IClaudeCompletion
 
     /// <summary>Son yanıtın token sayıları (kayıt için: önbellek çalışıyor mu, çıktı ne kadar); bilinmiyorsa null.</summary>
     string? LastUsage => null;
+
+    /// <summary>Çıktısız istek: sessizlikte bağlantıyı ve sistem talimatının önbelleğini sıcak tutar.</summary>
+    Task WarmAsync(string system, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 /// <summary>Claude isteğinin kullanıcıya gösterilebilecek sonucu.</summary>
@@ -35,7 +38,7 @@ public sealed class ClaudeException(OnlineKeyState state, string? detail = null)
 /// bağlamı bilen, deyimleri doğru çeviren Türkçesi gelince yazı onunla değiştirilir. Claude'a ulaşılamazsa, anahtar
 /// geçersizse ya da kredi bittiyse cihaz üstü çeviri kalır; oyun hiç altyazısız kalmaz.
 /// </summary>
-public sealed partial class ClaudeTranslator : IProgressiveTranslator
+public sealed partial class ClaudeTranslator : IProgressiveTranslator, IPrefetchingTranslator
 {
     private const int CacheLimit = 4096;
     /// <summary>Bağlam olarak gönderilen önceki satır sayısı.</summary>
@@ -129,6 +132,24 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
           "dialogue": false.
         """;
 
+    /// <summary>
+    /// Dublaj kapalıyken sistem talimatına eklenir: JSON yerine kısa düz metin. Ölçümde JSON yanıt satır başına
+    /// ~1,08 sn, bu biçim ~0,82 sn sürdü (yapılandırılmış çıktı ilk sözcüğü geciktiriyor, alan adları da token).
+    /// Arayüz yazısı "#", tahminli satır "~ " ile işaretlenir; konuşmacı adı "Ad: " olarak yazılır.
+    /// </summary>
+    internal const string SubtitleTextPrompt = """
+
+        Reply in plain text, never JSON: exactly one output line per input line, in the same order.
+        - A line that is something a character says: its Turkish subtitle. When the line starts with the speaker's name
+          (with or without a colon), write the name, a colon, then the translation: "Lt. West: Tamam, dinleyin."
+        - Start the line with "~ " when OCR mistakes made you guess any word of it (letters swapped, words run together or
+          cut off: "Kal CODY that", "He's clown", "Watchyour fire").
+        - Write only "#" for a line that is game interface text, not spoken - button prompts ("MOUNT", "EQUIP"), ammo or
+          score counters, weapon or item names, save notices, menu text - and for a line too garbled to read.
+        - Mission objectives and instructions to the player ("Go to Pier 400.", "Lose the cops.", "Get in the car.") are
+          not interface text: translate them, as a short Turkish instruction ("Pier 400'e git.", "Polisleri atlat.").
+        """;
+
     internal const string SubtitleSchema = """
         {"type":"object","additionalProperties":false,"required":["lines"],"properties":{"lines":{"type":"array","items":{
         "type":"object","additionalProperties":false,"required":["speaker","text","dialogue","guessed"],"properties":{
@@ -202,6 +223,78 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
         _speech.Clear();
     }
 
+    // --- Sıcak tutma ---
+
+    /// <summary>Son istekten bu kadar sonra (sessizlik) sıcak tutma isteği gider; sonra da bu aralıkla.</summary>
+    internal static TimeSpan WarmAfter { get; set; } = TimeSpan.FromSeconds(45);
+    /// <summary>Bu kadar uzun sessizlikte (oyuncu durdu, çeviri kapandı) sıcak tutma kendiliğinden durur.</summary>
+    private static readonly TimeSpan WarmLimit = TimeSpan.FromMinutes(10);
+    private Timer? _warmTimer;
+    private long _lastUseTicks;
+    private long _lastWarmTicks;
+    private int _warming;
+
+    /// <summary>
+    /// Oyun altyazısı çevrildi: sıcak tutma başlar (yalnız altyazı hattının çevirmeninde; ek bölge ve ekran çevirisi
+    /// için kurulan kısa ömürlü çevirmenler hiç istek atmaz).
+    /// </summary>
+    private void MarkUsed()
+    {
+        Interlocked.Exchange(ref _lastUseTicks, DateTime.UtcNow.Ticks);
+        if (_warmTimer is not null) return;
+        var timer = new Timer(_ => Warm(), null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
+        if (Interlocked.CompareExchange(ref _warmTimer, timer, null) is not null) timer.Dispose();
+    }
+
+    private void Warm()
+    {
+        var now = DateTime.UtcNow;
+        var idle = now - new DateTime(Interlocked.Read(ref _lastUseTicks), DateTimeKind.Utc);
+        if (idle > WarmLimit)
+        {
+            // Uzun sessizlik: zamanlayıcı kalkar; sonraki altyazıda yeniden kurulur.
+            Interlocked.Exchange(ref _warmTimer, null)?.Dispose();
+            return;
+        }
+        if (idle < WarmAfter || now - new DateTime(Interlocked.Read(ref _lastWarmTicks), DateTimeKind.Utc) < WarmAfter) return;
+        if (now < _pausedUntil || Interlocked.Exchange(ref _warming, 1) == 1) return;
+        Interlocked.Exchange(ref _lastWarmTicks, now.Ticks);
+        // Önbelleğe alınan önek gerçek istektekiyle aynı olmalı: dublaj açıksa onun talimatı.
+        var system = _dubbing() && !_jsonUnavailable ? WithGame(SystemPrompt + DubbingPrompt) : WithGame(SystemPrompt + SubtitleTextPrompt);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                await _claude.WarmAsync(system, timeout.Token).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Sıcak tutma isteği başarısız olursa bir sonraki gerçek istek normal yoldan gider.
+            }
+            finally
+            {
+                Volatile.Write(ref _warming, 0);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Satır ilk karede tam cümle olarak okundu, ikinci kare henüz gelmedi: Claude isteği şimdiden başlar. İkinci kare
+    /// aynı satırı doğrulayınca asıl istek bu isteği bekler (satır "çevriliyor" diye işaretli), yeniden istenmez.
+    /// Doğrulanmazsa (bozuk okuma) çeviri gösterilmez.
+    /// </summary>
+    public void Prefetch(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || _cache.ContainsKey(text)) return;
+        UseGame();
+        MarkUsed();
+        var lines = SubtitleSegmenter.StackedLines(text).Split('\n');
+        if (lines.All(line => LookupLine(line) is not null) || InFlight(lines).Count > 0) return;
+        // Okuma hattının kilidi altında çağrılır: istek hazırlığı onu bekletmesin.
+        _ = Task.Run(() => RefineAsync(text, CancellationToken.None));
+    }
+
     /// <summary>Bekleyen hafıza değişikliklerini diske yazar.</summary>
     public void Flush() => _memory?.Flush();
 
@@ -215,6 +308,7 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
     {
         ArgumentNullException.ThrowIfNull(text);
         UseGame();
+        MarkUsed();
         if (_cache.TryGetValue(text, out var cached)) return ProgressiveTranslation.Final(cached);
         if (_fallback is null) return ProgressiveTranslation.Final(await TranslateAsync(text, cancellationToken).ConfigureAwait(false));
         // Bütün satırlar hafızada: yerel model hiç gösterilmez, kayıtlı Türkçe beklemeden gelir.
@@ -291,6 +385,9 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
         var dubbing = !_jsonUnavailable;
         var voiced = _dubbing();
         var jsonRejected = false;
+        // Kısa düz metin yanıtı alındı (dublaj kapalı); aşağıdaki eski düz yol yeniden istemez.
+        var answered = false;
+        if (missing.Count > 0) Interlocked.Exchange(ref _lastUseTicks, DateTime.UtcNow.Ticks);
         try
         {
             string translated = "";
@@ -305,13 +402,29 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
                 _log?.Write("onbellek", clock.ElapsedMilliseconds, source, translated);
                 dubbing = false;
             }
+            else if (!voiced)
+            {
+                // Dublaj kapalı: JSON yerine kısa düz metin (~0,25 sn daha hızlı). Arayüz yazısı "#", tahmin "~ ".
+                var reply = await _claude.CompleteAsync(WithGame(SystemPrompt + SubtitleTextPrompt), UserMessage(request), timeout.Token)
+                    .ConfigureAwait(false);
+                answered = true;
+                dubbing = false;
+                if (ParseText(request, reply) is not { } parsed)
+                {
+                    _log?.Write("yanit-uymadi", clock.ElapsedMilliseconds, request, reply);
+                    return null;
+                }
+                if (parsed.Aligned) fresh = parsed.Entries;
+                else if (Assemble(parsed.Entries) is { } block) merged = block;
+                else return null;
+            }
             else if (dubbing)
             {
                 try
                 {
                     var json = await (voiced
-                            ? _claude.CompleteJsonAsync(SystemPrompt + DubbingPrompt, UserMessage(request), DubbingSchema, timeout.Token)
-                            : _claude.CompleteJsonAsync(SystemPrompt + SubtitlePrompt, UserMessage(request), SubtitleSchema, timeout.Token))
+                            ? _claude.CompleteJsonAsync(WithGame(SystemPrompt + DubbingPrompt), UserMessage(request), DubbingSchema, timeout.Token)
+                            : _claude.CompleteJsonAsync(WithGame(SystemPrompt + SubtitlePrompt), UserMessage(request), SubtitleSchema, timeout.Token))
                         .ConfigureAwait(false);
                     if (ParseEntries(request, json) is not { } parsed)
                     {
@@ -332,9 +445,9 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
                     dubbing = false;
                 }
             }
-            if (!dubbing && missing.Count > 0)
+            if (!dubbing && !answered && missing.Count > 0)
             {
-                var plain = Clean(await _claude.CompleteAsync(SystemPrompt, UserMessage(request), timeout.Token).ConfigureAwait(false));
+                var plain = Clean(await _claude.CompleteAsync(WithGame(SystemPrompt), UserMessage(request), timeout.Token).ConfigureAwait(false));
                 // Düz istek geçtiyse anahtar sağlam, yapılandırılmış çıktı desteklenmiyor: oturum boyunca düz yola geçilir.
                 if (jsonRejected) _jsonUnavailable = true;
                 if (plain.Length == 0) return null;
@@ -441,6 +554,57 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
     /// </summary>
     internal static (string Translated, IReadOnlyList<SpokenLine> Speech)? ParseDubbing(string source, string json) =>
         ParseEntries(source, json) is { } parsed ? Assemble(parsed.Entries) : null;
+
+    /// <summary>
+    /// Kısa düz metin yanıtı (<see cref="SubtitleTextPrompt"/>): her satır altyazı, "#" (arayüz yazısı ya da okunamayan
+    /// satır; gösterilmez) ya da "~ " ile başlayan tahminli çeviri. <c>Aligned</c>: her İngilizce satıra bir yanıt
+    /// satırı düştü (satır önbelleğine yazılabilir). Yanıt boşsa null.
+    /// </summary>
+    internal static (List<LineResult> Entries, bool Aligned)? ParseText(string source, string reply)
+    {
+        var english = source.Split('\n');
+        var lines = Clean(reply).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length == 0) return null;
+        var aligned = lines.Length == english.Length;
+        var results = new List<LineResult>();
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var text = lines[i].Trim();
+            var guessed = false;
+            if (text.StartsWith('~'))
+            {
+                guessed = true;
+                text = text[1..].Trim();
+            }
+            // Arayüz yazısı ya da okunamayan satır; Claude çeviri yerine açıklama yazdıysa o da gösterilmez.
+            if (text.Length == 0 || text.StartsWith('#') || IsComment(text))
+            {
+                results.Add(new LineResult("", true, null, guessed));
+                continue;
+            }
+            var pieces = aligned ? SubtitleSegmenter.Split(english[i]) : new List<SubtitleSegmenter.Piece>();
+            // Konuşmacı: Türkçedeki "Ad:" etiketi, İngilizce satır da o adla başlıyorsa (iki noktasız adlar dahil:
+            // "Lt. West Okay…" → "Lt. West: Tamam…"). Satırlar eşleşmediyse kısa, büyük harfle başlayan etiket.
+            string? speaker = null;
+            var colon = text.IndexOf(": ", StringComparison.Ordinal);
+            if (colon > 0 && colon <= 40)
+            {
+                var label = text[..colon].Trim();
+                if (aligned ? english[i].TrimStart().StartsWith(label, StringComparison.OrdinalIgnoreCase)
+                    : label.Split(' ').Length <= 3 && char.IsUpper(label[0]))
+                    speaker = aligned ? WithoutVocative(label, english[i]) : label;
+            }
+            speaker ??= pieces.Select(SubtitleSegmenter.LabelName).FirstOrDefault(name => name is { Length: > 0 });
+            var said = speaker is not null && text.StartsWith(speaker + ":", StringComparison.OrdinalIgnoreCase)
+                ? text[(speaker.Length + 1)..].Trim() : text;
+            var spoken = said.Replace("[", "").Replace("]", "").TrimStart('-', '–', '—', ' ');
+            var newTurn = pieces.Count > 0 && !pieces[0].Translate && "-–—".Contains(pieces[0].Text[0]);
+            var heard = aligned ? string.Join(' ', pieces.Where(piece => piece.Translate).Select(piece => piece.Text)) : "";
+            results.Add(new LineResult(text, false,
+                spoken.Any(char.IsLetter) ? new SpokenLine(heard.Length > 0 ? heard : said, spoken, speaker, newTurn) : null, guessed));
+        }
+        return (results, aligned);
+    }
 
     /// <summary>Bir ekran satırının çevirisi: altyazısı, arayüz yazısı mı (gösterilmez, seslendirilmez), konuşması.</summary>
     /// <c>Guessed</c>: İngilizce bozuk okunmuştu, Claude bazı sözcükleri tahmin etti (kalıcı hafızaya yazılmaz).
@@ -556,15 +720,25 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
         return speaker;
     }
 
+    /// <summary>
+    /// Sistem talimatı + oyun adı ve oyuncunun notları (sözlük). Notlar oyun boyunca değişmediği için önbelleğe alınan
+    /// sistem talimatında durur: her satırda baştan işlenmez, uzun bir oyun sözlüğü çeviriyi yavaşlatmaz.
+    /// </summary>
+    internal string WithGame(string system)
+    {
+        var (game, notes) = _game();
+        if (game.Trim().Length == 0 && notes.Trim().Length == 0) return system;
+        var text = new StringBuilder(system).AppendLine().AppendLine();
+        if (game.Trim().Length > 0) text.Append("Game: ").AppendLine(game.Trim());
+        if (notes.Trim().Length > 0)
+            text.AppendLine("Player's notes and glossary for this game (always follow them):").AppendLine(notes.Trim());
+        return text.ToString().TrimEnd();
+    }
+
     /// <summary>Önceki satırlar (bağlam), bilinen isimler ve çevrilecek metin.</summary>
     internal string UserMessage(string text)
     {
         var message = new StringBuilder();
-        var (game, notes) = _game();
-        if (game.Trim().Length > 0) message.Append("Game: ").AppendLine(game.Trim());
-        if (notes.Trim().Length > 0)
-            message.AppendLine("Player's notes and glossary (always follow them):").AppendLine(notes.Trim());
-        if (game.Trim().Length > 0 || notes.Trim().Length > 0) message.AppendLine();
         lock (_historyGate)
         {
             if (_history.Count > 0)
@@ -674,8 +848,11 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator
         // "fastest route is the north door" / "… it may be flooded" eşleşmez (sonraki cümle çevrilmeden kalıyordu).
         if (shortKey.Length >= 3 && shortKey.Length >= longKey.Length * 0.5)
         {
+            // Sonu kesik satır ancak uzunsa aynı sayılır: GTA'da yazı belirirken okunan "go to the" önbellekteki
+            // "go to the crane" çevirisiyle ("Vince git.") gösteriliyordu.
             var extra = longKey.EndsWith(" " + shortKey, StringComparison.Ordinal) ? longKey[..^(shortKey.Length + 1)]
-                : longKey.StartsWith(shortKey + " ", StringComparison.Ordinal) ? longKey[(shortKey.Length + 1)..] : null;
+                : longKey.StartsWith(shortKey + " ", StringComparison.Ordinal) && shortKey.Split(' ').Length >= 5
+                    ? longKey[(shortKey.Length + 1)..] : null;
             if (extra is not null && extra.Split(' ').Length <= 2) return true;
         }
         // Kısa satırda tek harf anlamı değiştirir: "he s down" / "he s clown", "copy that" / "cody that",

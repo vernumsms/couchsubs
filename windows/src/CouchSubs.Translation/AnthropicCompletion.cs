@@ -78,6 +78,27 @@ public sealed class AnthropicCompletion : IClaudeCompletion
         return string.Concat(response.Content.Select(block => block.Value).OfType<TextBlock>().Select(text => text.Text));
     }
 
+    /// <summary>
+    /// Sessizlikte bağlantıyı ve önbelleği sıcak tutar: çıktısız (max_tokens 0) istek sistem talimatını önbellekte
+    /// tazeler, bağlantı da açık kalır. Önbellek 5 dakikada siliniyor, bağlantı da boşta kapanıyordu; uzun sessizlikten
+    /// sonraki ilk satır ~2 sn sürüyordu. Ayarlar gerçek istekle aynı olmalı (düşünme ve efor önbellek anahtarına girer).
+    /// </summary>
+    public async Task WarmAsync(string system, CancellationToken cancellationToken)
+    {
+        await _client.Messages.Create(new MessageCreateParams
+        {
+            Model = _model,
+            MaxTokens = 0,
+            System = new List<TextBlockParam>
+            {
+                new() { Text = system, CacheControl = new CacheControlEphemeral() },
+            },
+            OutputConfig = new OutputConfig { Effort = Effort.Low },
+            Thinking = _model == FastModel ? new ThinkingConfigDisabled() : null,
+            Messages = [new UserMessageParam { Content = "." }],
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>JSON şema metni → SDK'nın beklediği sözlük.</summary>
     private static Dictionary<string, System.Text.Json.JsonElement> SchemaOf(string schema)
     {

@@ -147,8 +147,8 @@ public class ClaudeTranslatorTests
         var second = await translator.TranslateProgressivelyAsync("Run!");
         Assert.Equal("yerel: Run!", second.Quick);
         Assert.Null(await second.Refined);
-        // Yapılandırılmış istek reddedilince düz istek de denenir; ikisi de reddedilince Claude'a ara verilir.
-        Assert.Equal(2, calls);
+        // Dublaj kapalıyken tek (düz metin) istek gider; reddedilince Claude'a ara verilir, ikinci satır istenmez.
+        Assert.Equal(1, calls);
         Assert.Equal("yerel: Run!", await translator.TranslateAsync("Run!"));
     }
 
@@ -291,8 +291,10 @@ public class ClaudeTranslatorTests
         var claude = new FakeClaude(_ => "Koş!");
         var translator = new ClaudeTranslator(claude, new FakeLocal(), game: () => ("Call of Duty", "Ghost = çevirme"));
         await (await translator.TranslateProgressivelyAsync("Run!")).Refined;
-        Assert.Contains("Game: Call of Duty", claude.Requests[0].User);
-        Assert.Contains("Ghost = çevirme", claude.Requests[0].User);
+        Assert.Contains("Game: Call of Duty", claude.Requests[0].System);
+        Assert.Contains("Ghost = çevirme", claude.Requests[0].System);
+        // Notlar önbelleğe alınan sistem talimatında; her satırın mesajında tekrar gönderilmez.
+        Assert.DoesNotContain("Ghost", claude.Requests[0].User);
     }
 
     [Fact]
@@ -367,15 +369,80 @@ public class ClaudeTranslatorTests
 
     /// Dublaj kapalıyken kısa şema istenir (ses, ton, cinsiyet alanları yok) ve yanıt yine okunur.
     [Fact]
-    public async Task WithoutDubbingTheShortSubtitleSchemaIsUsed()
+    public async Task WithoutDubbingThePlainTextReplyIsUsed()
     {
-        const string json = """{"lines":[{"speaker":"Franklin","text":"Yok be kanka.","dialogue":true,"guessed":false}]}""";
-        var claude = new FakeClaude(_ => json);
+        var claude = new FakeClaude(_ => "Franklin: Yok be kanka.");
         var translator = new ClaudeTranslator(claude, new FakeLocal(), dubbing: () => false);
 
         Assert.Equal("Franklin: Yok be kanka.", await (await translator.TranslateProgressivelyAsync("Franklin: Nah, homie.")).Refined);
-        Assert.Equal(ClaudeTranslator.SubtitleSchema, Assert.Single(claude.Schemas));
+        // JSON şeması istenmez (yapılandırılmış çıktı yanıtı ~0,25 sn geciktiriyordu).
+        Assert.Empty(claude.Schemas);
+        Assert.Contains(ClaudeTranslator.SubtitleTextPrompt, claude.Requests[0].System);
         Assert.DoesNotContain("Voice-over", claude.Requests[0].System);
+    }
+
+    /// Düz metin yanıtı: "#" arayüz yazısı (gösterilmez), "~ " tahmin, iki noktasız konuşmacı adı.
+    [Fact]
+    public void PlainTextReplyMarksInterfaceGuessesAndSpeakers()
+    {
+        var parsed = ClaudeTranslator.ParseText(Lines("MOUNT", "Lt. West Okay, listen up.", "Kal He's clown"),
+            Lines("#", "Lt. West: Tamam, dinleyin.", "~ Kal: O düştü."));
+
+        Assert.NotNull(parsed);
+        var (entries, aligned) = parsed.Value;
+        Assert.True(aligned);
+        Assert.True(entries[0].Interface);
+        Assert.Equal("Lt. West: Tamam, dinleyin.", entries[1].Subtitle);
+        Assert.Equal("Lt. West", entries[1].Speech?.Speaker);
+        Assert.Equal("Tamam, dinleyin.", entries[1].Speech?.Turkish);
+        Assert.False(entries[1].Guessed);
+        Assert.Equal("Kal: O düştü.", entries[2].Subtitle);
+        Assert.True(entries[2].Guessed);
+    }
+
+    [Fact]
+    public async Task PlainTextReplyHidesInterfaceTextAndExplanations()
+    {
+        var translator = new ClaudeTranslator(new FakeClaude(_ => Lines("#", "Jae: Hadi, itin!")), new FakeLocal());
+        Assert.Equal("Jae: Hadi, itin!", await (await translator.TranslateProgressivelyAsync(Lines("MOUNT", "Jae C'mon, push!"))).Refined);
+
+        // Claude çeviri yerine açıklama yazdıysa altyazı olarak gösterilmez.
+        var comment = new ClaudeTranslator(new FakeClaude(_ => "I can't make out this line."), new FakeLocal());
+        Assert.Equal("", await (await comment.TranslateProgressivelyAsync("V'.lfiere, Ibe, flick are going fill?!")).Refined);
+    }
+
+    /// Satır ilk karede okununca istek başlar; doğrulanınca aynı istek beklenir, Claude'a ikinci kez gidilmez.
+    [Fact]
+    public async Task PrefetchedLineIsNotRequestedTwice()
+    {
+        var gate = new TaskCompletionSource();
+        var claude = new GatedClaude(gate.Task, "Koş!");
+        var translator = new ClaudeTranslator(claude, new FakeLocal());
+
+        translator.Prefetch("Run!");
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (claude.Calls == 0 && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(10);
+        var result = await translator.TranslateProgressivelyAsync("Run!");
+        gate.SetResult();
+
+        Assert.Equal("Koş!", await result.Refined ?? result.Quick);
+        Assert.Equal(1, claude.Calls);
+    }
+
+    private sealed class GatedClaude(Task gate, string reply) : IClaudeCompletion
+    {
+        private int calls;
+        public int Calls => Volatile.Read(ref calls);
+
+        public async Task<string> CompleteAsync(string system, string user, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref calls);
+            await gate.WaitAsync(cancellationToken);
+            return reply;
+        }
+
+        public Task<string> CompleteJsonAsync(string system, string user, string schema, CancellationToken cancellationToken) =>
+            CompleteAsync(system, user, cancellationToken);
     }
 
     /// Kumanda ipucu ("MOUNT") konuşmanın yanında altyazıda gösterilmez; ekranda yalnız arayüz yazısı varsa gösterilir.
@@ -530,6 +597,9 @@ public class ClaudeTranslatorTests
     [InlineData("kal watchyour fire", "kal watch your fire", true)]
     [InlineData("kal roger that", "roger that", true)]
     [InlineData("just one target left park", "one target left park", true)]
+    // GTA 5 kaydı: belirirken yarım okunan görev yazısı başka bir görevin çevirisiyle gösteriliyordu.
+    [InlineData("go to the", "go to the crane", false)]
+    [InlineData("get in the", "get in the handler", false)]
     public void StoredLineMatchingIsStrict(string a, string b, bool same) =>
         Assert.Equal(same, ClaudeTranslator.SameStoredLine(a, b));
 

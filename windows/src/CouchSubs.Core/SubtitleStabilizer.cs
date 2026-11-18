@@ -28,8 +28,15 @@ public sealed class SubtitleStabilizer(double similarity = 0.85, int stableFrame
     private string sent = "";
     private int emptyCount;
 
+    /// <summary>
+    /// Son karede ilk kez görülen, noktalamayla biten satır (henüz doğrulanmadı); yoksa null. Çevirisi şimdiden
+    /// başlatılabilir; satır bir sonraki karede doğrulanınca gönderilir.
+    /// </summary>
+    public string? Early { get; private set; }
+
     public StabilizerAction Feed(string rawText)
     {
+        Early = null;
         var text = TextMatch.Normalize(rawText);
         // 3 karakterden kısa okumalar (gürültü, tek simge) boş kare sayılır.
         if (text.Length < 3)
@@ -58,8 +65,11 @@ public sealed class SubtitleStabilizer(double similarity = 0.85, int stableFrame
         // Daktilo efektinde metin büyürken aday değişir; tamamlanıp kararlı olunca gider.
         // Noktalamayla biten satır zaten tamamdır; hızlı konuşmada beklemeden ilk karede gider.
         var ready = candidateCount == stableFrames || (fastSentences && candidateCount == 1 && EndsSentence(rawText));
+        var known = TextMatch.IsSimilar(text, sent, similarity) || TextMatch.IsSameSubtitle(text, sent);
+        // İlk kez görülen tam cümle: doğrulanmadan çevirisine başlanabilir (bir okuma süresi kazanılır).
+        Early = !ready && !known && candidateCount == 1 && EndsSentence(rawText) ? rawText.Trim() : null;
         // Gönderilenin gürültülü yeniden okuması yeni satır değildir; TV'de aynı cümle iki kez görünmesin.
-        if (!ready || TextMatch.IsSimilar(text, sent, similarity) || TextMatch.IsSameSubtitle(text, sent)) return StabilizerAction.None;
+        if (!ready || known) return StabilizerAction.None;
         sent = text;
         return StabilizerAction.Translate(rawText.Trim());
     }

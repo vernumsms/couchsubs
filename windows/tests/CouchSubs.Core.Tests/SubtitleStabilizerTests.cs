@@ -108,4 +108,22 @@ public class SubtitleStabilizerTests
         Assert.Equal(StabilizerAction.None, s.Feed("Hold the gate"));
         Assert.Equal(StabilizerAction.Translate("Hold the gate"), s.Feed("Hold the gate"));
     }
+
+    /// Anlık modda tam cümle ilk karede "erken" bildirilir (çevirisi başlayabilir), gönderim yine ikinci karede.
+    [Fact]
+    public void FinishedSentenceIsOfferedEarlyBeforeConfirmation()
+    {
+        var s = new SubtitleStabilizer(fastSentences: false);
+
+        Assert.Equal(StabilizerAction.None, s.Feed("Drive! Go, go, go!"));
+        Assert.Equal("Drive! Go, go, go!", s.Early);
+        Assert.Equal(StabilizerAction.Translate("Drive! Go, go, go!"), s.Feed("Drive! Go, go, go!"));
+        Assert.Null(s.Early);
+        // Gönderilmiş satırın yeniden okuması ve yarım satır erken bildirilmez.
+        Assert.Equal(StabilizerAction.None, s.Feed("Drive! Go, go, go!"));
+        Assert.Null(s.Early);
+        s.Feed("");
+        s.Feed("Keep your head");
+        Assert.Null(s.Early);
+    }
 }

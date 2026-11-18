@@ -23,6 +23,15 @@ public interface IProgressiveTranslator : ITextTranslator
     Task<ProgressiveTranslation> TranslateProgressivelyAsync(string text, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Çeviriye satır doğrulanmadan başlayabilen çevirmen: altyazı ilk karede tam cümle okununca istek gider; ikinci kare
+/// doğrulayınca asıl istek bu isteğin sonucunu kullanır. Doğrulanmayan (bozuk) okumanın çevirisi gösterilmez.
+/// </summary>
+public interface IPrefetchingTranslator
+{
+    void Prefetch(string text);
+}
+
 /// <param name="Quick">Hemen gösterilecek çeviri.</param>
 /// <param name="Refined">Daha iyi çeviri; iyileştirme yoksa ya da başarısız olduysa null döner. Hiçbir zaman hata fırlatmaz.</param>
 public sealed record ProgressiveTranslation(string Quick, Task<string?> Refined)
