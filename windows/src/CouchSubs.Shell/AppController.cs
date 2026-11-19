@@ -90,7 +90,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         console = store.Load<RegisteredConsole>(StoreKeys.Console);
         tv = store.Load<LgTv>(StoreKeys.Tv);
         settings = settingsStore.Load();
-        var ready = accountId is not null && console is not null && tv is not null && store.Load<string>(StoreKeys.TvKey) is not null;
+        var ready = HasSource && tv is not null && store.Load<string>(StoreKeys.TvKey) is not null;
         step = ready ? OnboardingStep.Done : OnboardingStep.Welcome;
         server.ClientsChanged += OnClientsChanged;
     }
@@ -109,12 +109,22 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public static int StepCount => (int)OnboardingStep.Done;
     public int StepNumber => Math.Min((int)step + 1, StepCount);
     public bool HasAccount => accountId is not null;
+    /// <summary>Görüntü bilgisayardaki Xbox uygulamasının penceresinden alınır (PS5 eşleştirmesi gerekmez).</summary>
+    public bool UsesXbox
+    {
+        get => settings.Source == GameSource.XboxApp;
+        set => Settings = settings with { Source = value ? GameSource.XboxApp : GameSource.PlayStation };
+    }
+    /// <summary>Ana ekrandaki kaynak satırının adı.</summary>
+    public string SourceTitle => UsesXbox ? "Xbox" : "PS5";
+    /// <summary>Görüntü kaynağı hazır: Xbox modunda her zaman, PS5'te hesap ve eşleşme varsa.</summary>
+    private bool HasSource => UsesXbox || (accountId is not null && console is not null);
     public RegisteredConsole? Console => console;
     public LgTv? Tv => tv;
     public bool IsRunning { get => isRunning; private set => Set(ref isRunning, value, [nameof(Ps5StatusText), nameof(Ps5Tone), nameof(TvTone)]); }
     public bool IsStarting { get => isStarting; private set => Set(ref isStarting, value); }
     public SessionState SessionState { get => sessionState; private set => Set(ref sessionState, value, [nameof(Ps5StatusText), nameof(Ps5Tone)]); }
-    public string Ps5StatusText => StatusText(sessionState, isRunning, text);
+    public string Ps5StatusText => UsesXbox ? XboxStatusText(sessionState, isRunning, text) : StatusText(sessionState, isRunning, text);
     public StatusTone Ps5Tone => Ps5ToneFor(sessionState, isRunning);
     public int TvClients { get => tvClients; private set => Set(ref tvClients, value, [nameof(TvTone), nameof(TvStatusText)]); }
     public StatusTone TvTone => TvToneFor(tvClients, isRunning);
@@ -163,7 +173,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         set
         {
             var old = settings;
-            if (!Set(ref settings, value, [nameof(DubbingOn), nameof(ListenOn), nameof(GameName)])) return;
+            if (!Set(ref settings, value, [nameof(DubbingOn), nameof(ListenOn), nameof(GameName), nameof(UsesXbox), nameof(SourceTitle), nameof(Ps5StatusText)])) return;
             settingsStore.Save(value);
             server.SendStyle(value.Style);
             if (old.Dubbing != value.Dubbing) DubbingSettingsChanged(old.Dubbing);
@@ -194,12 +204,14 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         if (!CanAdvance || step == OnboardingStep.Done) return;
         // Model büyük; kullanıcı diğer adımlarla uğraşırken arka planda iner.
         if (step == OnboardingStep.Welcome) StartModelDownload();
-        Step = step + 1;
+        // Xbox'ta PSN hesabı ve PS5 eşleştirmesi yok: doğrudan TV adımına geçilir.
+        Step = step == OnboardingStep.Welcome && UsesXbox ? OnboardingStep.Tv : step + 1;
     }
 
     public void Back()
     {
-        if (step > OnboardingStep.Welcome) Step = step - 1;
+        if (step == OnboardingStep.Tv && UsesXbox) Step = OnboardingStep.Welcome;
+        else if (step > OnboardingStep.Welcome) Step = step - 1;
     }
 
     public async Task CompletePsnLoginAsync(Uri redirect)
@@ -755,7 +767,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public async Task StartAsync()
     {
         // Düğmeye iki kez basılması ya da beklerken tekrar çağrılması ikinci bir oturum açmaz.
-        if (isRunning || isStarting || console is null || accountId is null || tv is null) return;
+        if (isRunning || isStarting || !HasSource || tv is null) return;
         IsStarting = true;
         try
         {
@@ -767,7 +779,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             MakePipeline();
             if (settings.Dubbing.Enabled && DubbingInstalled) MakeDubber()?.Prepare();
 
-            var stream = services.MakeStream(console, accountId);
+            var stream = UsesXbox ? services.MakeWindowStream(settings.WindowTitle) : services.MakeStream(console!, accountId!);
             stream.StateChanged += state => post(() => SessionStateChanged(state));
             stream.FrameReceived += HandleFrame;
             if (stream is IConsoleRelocator relocator) relocator.ConsoleMoved += moved => post(() => ConsoleMoved(moved));
@@ -834,6 +846,14 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         clients > 0 ? StatusTone.Good : running ? StatusTone.Warning : StatusTone.Idle;
 
     /// <summary>PS5 durumunun kullanıcıya gösterilecek metni.</summary>
+    public static string XboxStatusText(SessionState state, bool running, Localizer text)
+    {
+        if (state.Phase == SessionPhase.Streaming) return text["Connected"];
+        if (!running) return text["Not connected"];
+        if (state.Phase == SessionPhase.Connecting) return text["Connecting…"];
+        return text["Open the Xbox app and start Remote Play"];
+    }
+
     public static string StatusText(SessionState state, bool running, Localizer text)
     {
         switch (state.Phase)

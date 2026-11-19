@@ -57,6 +57,10 @@ public sealed record UserSettings
     public string GameNotes { get; init; } = "";
     /// <summary>Deneysel: oyunun sesi dinlenir, altyazısı olmayan konuşmalar da çevrilir (Whisper, bilgisayarda).</summary>
     public bool ListenToGame { get; init; }
+    /// <summary>Görüntü nereden alınır: PS5 (Remote Play) ya da bilgisayardaki Xbox uygulamasının penceresi.</summary>
+    public GameSource Source { get; init; } = GameSource.PlayStation;
+    /// <summary>Xbox modunda okunacak pencerenin başlığında geçen metin.</summary>
+    public string WindowTitle { get; init; } = "Xbox";
 
     /// <summary>Ek bölgenin sayısı; <see cref="ExtraRegion"/> 1..ExtraRegionCount arasında çalışır.</summary>
     public const int ExtraRegionCount = 3;
@@ -83,6 +87,9 @@ public sealed record UserSettings
         _ => this,
     };
 }
+
+/// <summary>Oyun görüntüsünün kaynağı.</summary>
+public enum GameSource { PlayStation, XboxApp }
 
 /// <summary>Tek seferlik çevirinin sonucunun gösterileceği yer.</summary>
 public enum ResultTarget { Tv, Pc, Both }
@@ -135,6 +142,8 @@ public interface IAppServices
     /// <summary>TV ile eşleşir ve TV uygulamasını sunucu adresiyle başlatmayı dener.</summary>
     Task<TvPairing> PairTvAsync(LgTv tv, string? key, string server);
     IStreamSession MakeStream(RegisteredConsole console, byte[] accountId);
+    /// <summary>Görüntüyü başlığında <paramref name="titleContains"/> geçen pencereden (Xbox uygulaması) alan oturum.</summary>
+    IStreamSession MakeWindowStream(string titleContains) => throw new NotSupportedException();
     /// <param name="appConnected">TV uygulaması bilgisayara bağlı mı (Samsung'da bağlıyken TV'ye dokunulmaz).</param>
     /// <param name="onMoved">TV ağda yeni bir adreste bulununca çağrılır.</param>
     IKeeper MakeKeeper(LgTv tv, string? key, IReadOnlyDictionary<string, string> parameters, Func<bool> appConnected, Action<LgTv> onMoved);

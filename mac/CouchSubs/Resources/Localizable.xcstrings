@@ -817,6 +817,60 @@
         }
       }
     },
+    "Which console do you play on?": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Which console do you play on?" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Hangi konsolda oynuyorsunuz?" } }
+      }
+    },
+    "Xbox (Remote Play in the Xbox app on this computer)": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Xbox (Remote Play in the Xbox app on this computer)" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Xbox (bu bilgisayardaki Xbox uygulamasıyla Uzaktan Oynatma)" } }
+      }
+    },
+    "An Xbox on the same network, with Remote Play turned on (Settings › Devices & connections › Remote features)": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "An Xbox on the same network, with Remote Play turned on (Settings › Devices & connections › Remote features)" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Aynı ağda, Uzaktan Oynatma'sı açık bir Xbox (Ayarlar › Cihazlar ve bağlantılar › Uzak özellikler)" } }
+      }
+    },
+    "The Xbox app on this computer, connected to the Xbox with Remote Play (the window must stay open, not minimized)": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The Xbox app on this computer, connected to the Xbox with Remote Play (the window must stay open, not minimized)" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Bu bilgisayarda Xbox uygulaması, Xbox'a Uzaktan Oynatma ile bağlı (pencere açık kalmalı, simge durumuna küçültülmemeli)" } }
+      }
+    },
+    "A Samsung, LG or Google TV with the CouchSubs TV app": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "A Samsung, LG or Google TV with the CouchSubs TV app" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Altyazı+ TV uygulaması kurulu bir Samsung, LG ya da Google TV" } }
+      }
+    },
+    "Console": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Console" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Konsol" } }
+      }
+    },
+    "Window to read (a word in its title):": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Window to read (a word in its title):" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Okunacak pencere (başlığında geçen bir kelime):" } }
+      }
+    },
+    "Takes effect the next time you start translating. Keep the window open (it may be behind other windows, but not minimized).": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Takes effect the next time you start translating. Keep the window open (it may be behind other windows, but not minimized)." } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Bir sonraki çeviri başlatışında geçerli olur. Pencere açık kalmalı (başka pencerelerin arkasında olabilir ama simge durumunda olmamalı)." } }
+      }
+    },
+    "Open the Xbox app and start Remote Play": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Open the Xbox app and start Remote Play" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Xbox uygulamasını açıp Uzaktan Oynat'ı başlatın" } }
+      }
+    },
     "Connected": {
       "localizations": {
         "en": {

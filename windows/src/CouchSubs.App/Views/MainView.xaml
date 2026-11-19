@@ -72,7 +72,7 @@
             <!-- Durumlar -->
             <c:Card Margin="0,24,0,0">
                 <StackPanel>
-                    <c:StatusRow Title="PS5" Value="{Binding Ps5StatusText}" Tone="{Binding Ps5Tone}" />
+                    <c:StatusRow Title="{Binding SourceTitle}" Value="{Binding Ps5StatusText}" Tone="{Binding Ps5Tone}" />
                     <Separator />
                     <c:StatusRow Title="TV" Value="{Binding TvStatusText}" Tone="{Binding TvTone}" />
                 </StackPanel>

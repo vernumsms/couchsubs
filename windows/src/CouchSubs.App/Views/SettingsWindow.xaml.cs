@@ -57,6 +57,8 @@ public partial class SettingsWindow : Window
         ListenCard.Visibility = controller.GameSpeechAvailable ? Visibility.Visible : Visibility.Collapsed;
         GameName.Text = settings.GameName;
         GameNotes.Text = settings.GameNotes;
+        (settings.Source == GameSource.XboxApp ? SourceXbox : SourcePlayStation).IsChecked = true;
+        WindowTitle.Text = settings.WindowTitle;
         loading = false;
     }
 
@@ -143,6 +145,19 @@ public partial class SettingsWindow : Window
         ListenStatus.Text = controller.IsRunning
             ? Localizer.Current["Stop and start translating again for this to take effect."]
             : on ? Localizer.Current["Ready. Game speech is listened to when you start translating."] : "";
+    }
+
+    private void OnSourceChanged(object sender, RoutedEventArgs e)
+    {
+        if (loading) return;
+        var source = sender == SourceXbox ? GameSource.XboxApp : GameSource.PlayStation;
+        if (source != controller.Settings.Source) Update(s => s with { Source = source });
+    }
+
+    private void OnWindowTitleChanged(object sender, RoutedEventArgs e)
+    {
+        var title = WindowTitle.Text.Trim();
+        if (title.Length > 0 && title != controller.Settings.WindowTitle) Update(s => s with { WindowTitle = title });
     }
 
     private void OnGameChanged(object sender, RoutedEventArgs e)

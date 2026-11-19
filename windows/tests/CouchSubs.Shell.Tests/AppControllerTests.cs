@@ -313,6 +313,21 @@ public class AppControllerTests
     }
 
     [Fact]
+    public void XboxSkipsPlayStationSteps()
+    {
+        var controller = Make(new FakeServices());
+        controller.UsesXbox = true;
+        controller.Advance();
+        Assert.Equal(OnboardingStep.Tv, controller.Step);
+        Assert.Equal("Xbox", controller.SourceTitle);
+        controller.Back();
+        Assert.Equal(OnboardingStep.Welcome, controller.Step);
+        controller.UsesXbox = false;
+        controller.Advance();
+        Assert.Equal(OnboardingStep.SecondAccount, controller.Step);
+    }
+
+    [Fact]
     public async Task ModelStepWaitsForDownload()
     {
         var services = new FakeServices();

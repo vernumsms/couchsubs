@@ -98,6 +98,8 @@ public sealed class LiveServices : IAppServices
 
     public IStreamSession MakeStream(RegisteredConsole console, byte[] accountId) => new StreamSession(console, accountId);
 
+    public IStreamSession MakeWindowStream(string titleContains) => new WindowCaptureSession(titleContains);
+
     public IKeeper MakeKeeper(LgTv tv, string? key, IReadOnlyDictionary<string, string> parameters, Func<bool> appConnected, Action<LgTv> onMoved)
     {
         if (tv.Brand == TvBrand.AndroidTv) return new IdleKeeper();

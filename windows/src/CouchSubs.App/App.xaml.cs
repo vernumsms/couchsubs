@@ -14,6 +14,17 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // Geliştirme aracı: CouchSubs.exe --capture-test "Xbox" kare.png → pencereden bir kare okuyup kaydeder ve kapanır.
+        if (e.Args is ["--capture-test", var title, var output])
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            _ = Task.Run(async () =>
+            {
+                var code = await WindowCaptureSession.CaptureTestAsync(title, output);
+                Dispatcher.Invoke(() => Shutdown(code));
+            });
+            return;
+        }
         var renderFolder = e.Args is ["--render-screens", var folder] ? folder : null;
         // Eksik bir DLL, onu kullanan yöntem derlenirken hata verir. Bu yüzden denetim ve yakalama burada, uygulamanın
         // kendi türlerine dokunan kod ise ayrı yöntemde (Start) durur.
