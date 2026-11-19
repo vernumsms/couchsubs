@@ -137,27 +137,57 @@ public sealed class WindowCaptureSession(string titleContains) : IStreamSession
 
     // --- Pencereyi bulma ---
 
-    /// <summary>Başlığında verilen metin geçen, görünür ve simge durumunda olmayan ilk üst düzey pencere (bu uygulamanınki hariç).</summary>
+    /// <summary>
+    /// Başlığında ya da uygulama (işlem) adında verilen metin geçen, görünür, simge durumunda olmayan en büyük üst düzey
+    /// pencere (bu uygulamanınki hariç). Yeni Xbox uygulamasının (XboxPcApp) penceresinin başlığı boş olabildiği için
+    /// işlem adına da bakılır; aynı uygulamanın küçük yan pencereleri (arkadaş listesi vb.) en büyüğü seçilerek elenir.
+    /// </summary>
     public static IntPtr FindWindow(string titleContains)
     {
         if (string.IsNullOrWhiteSpace(titleContains)) return IntPtr.Zero;
+        var wanted = titleContains.Trim();
         var own = (uint)Environment.ProcessId;
+        var names = new Dictionary<uint, string>();
         IntPtr found = IntPtr.Zero;
+        long foundArea = 0;
         EnumWindows((window, _) =>
         {
-            if (!IsWindowVisible(window) || IsIconic(window)) return true;
+            if (!IsWindowVisible(window) || IsIconic(window) || IsCloaked(window)) return true;
             GetWindowThreadProcessId(window, out var process);
             if (process == own) return true;
-            var title = Title(window);
-            if (title.Contains(titleContains.Trim(), StringComparison.OrdinalIgnoreCase))
+            if (!Title(window).Contains(wanted, StringComparison.OrdinalIgnoreCase)
+                && !ProcessName(process, names).Contains(wanted, StringComparison.OrdinalIgnoreCase)) return true;
+            if (!GetWindowRect(window, out var rect)) return true;
+            long width = rect.Right - rect.Left, height = rect.Bottom - rect.Top;
+            if (width < 320 || height < 180) return true;
+            if (width * height > foundArea)
             {
                 found = window;
-                return false;
+                foundArea = width * height;
             }
             return true;
         }, IntPtr.Zero);
         return found;
     }
+
+    private static string ProcessName(uint process, Dictionary<uint, string> cache)
+    {
+        if (cache.TryGetValue(process, out var name)) return name;
+        try
+        {
+            using var p = Process.GetProcessById((int)process);
+            name = p.ProcessName;
+        }
+        catch (Exception)
+        {
+            name = "";
+        }
+        cache[process] = name;
+        return name;
+    }
+
+    private static bool IsCloaked(IntPtr window) =>
+        DwmGetWindowAttribute(window, 14 /* DWMWA_CLOAKED */, out var cloaked, sizeof(int)) == 0 && cloaked != 0;
 
     /// <summary>Açık pencerelerin başlıkları (ayarlarda seçmek için).</summary>
     public static IReadOnlyList<string> WindowTitles()
@@ -379,6 +409,11 @@ public sealed class WindowCaptureSession(string titleContains) : IStreamSession
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr window, StringBuilder text, int max);
     [DllImport("user32.dll")] private static extern int GetWindowTextLength(IntPtr window);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out WindowRect rect);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowRect { public int Left, Top, Right, Bottom; }
 
     [DllImport("d3d11.dll")]
     private static extern int D3D11CreateDevice(IntPtr adapter, int driverType, IntPtr software, uint flags, IntPtr featureLevels,
