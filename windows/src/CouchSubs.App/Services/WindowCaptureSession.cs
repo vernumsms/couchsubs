@@ -325,7 +325,10 @@ public sealed class WindowCaptureSession(string titleContains) : IStreamSession
                 if (content is null || content.Value.Width > width || content.Value.Height > height
                     || Stopwatch.GetElapsedTime(measuredTicks, now) > TimeSpan.FromSeconds(2))
                 {
-                    content = ContentBounds(buffer, width, height);
+                    var measured = ContentBounds(buffer, width, height);
+                    if (content is null || content.Value != measured)
+                        Log($"görüntü alanı: pencere {width}x{height} → oyun {measured.Width}x{measured.Height} (+{measured.X},+{measured.Y})");
+                    content = measured;
                     measuredTicks = now;
                 }
                 var area = content.Value;
@@ -388,8 +391,31 @@ public sealed class WindowCaptureSession(string titleContains) : IStreamSession
         var right = width;
         while (right > width * 2 / 3 && ColumnDark(right - 1, top, bottom)) right--;
         // Tamamen karanlık sahnede (ör. yükleme ekranı) bantlar yanlış ölçülür; o zaman tüm kare kullanılır.
-        if (bottom - top < height / 2 || right - left < width / 2) return (0, 0, width, height);
-        return (left, top, right - left, bottom - top);
+        if (bottom - top < height / 2 || right - left < width / 2) return Widescreen(0, 0, width, height);
+        return Widescreen(left, top, right - left, bottom - top);
+    }
+
+    /// <summary>
+    /// Konsol görüntüsü TV'de 16:9 tam ekrandır. Pencerede oyunun üstünde başlık çubuğu ("XBOX" şeridi) kalırsa kare
+    /// 16:9'dan uzun olur ve altyazı TV'de birkaç yüzde aşağı kayar (çeviri oyunun satırını kapatmaz, altına düşer).
+    /// Fazla yükseklik üstten (başlık çubuğu), fazla genişlik iki yandan eşit atılır. Fark çok büyükse (oyun 16:9 değil
+    /// ya da pencere tuhaf) dokunulmaz.
+    /// </summary>
+    public static (int X, int Y, int Width, int Height) Widescreen(int x, int y, int w, int h)
+    {
+        var wanted = (int)Math.Round(w * 9 / 16.0);
+        if (h > wanted + 2)
+        {
+            var extra = h - wanted;
+            return extra <= h / 5 ? (x, y + extra, w, wanted) : (x, y, w, h);
+        }
+        var wantedWidth = (int)Math.Round(h * 16 / 9.0);
+        if (w > wantedWidth + 2)
+        {
+            var extra = w - wantedWidth;
+            return extra <= w / 5 ? (x + extra / 2, y, wantedWidth, h) : (x, y, w, h);
+        }
+        return (x, y, w, h);
     }
 
     private static Frame CropToFrame(byte[] bgra, int width, (int X, int Y, int Width, int Height) area)
