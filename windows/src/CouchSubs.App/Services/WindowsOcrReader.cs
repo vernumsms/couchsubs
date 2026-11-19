@@ -41,10 +41,51 @@ public sealed class WindowsOcrReader : ITextReader
     /// </summary>
     private Reading Recognize(Frame image)
     {
+        image = Enlarged(image);
         var raw = RecognizeOnce(image);
         if (image.Width < 40 || image.Height < 40) return raw;
         var whiteText = RecognizeOnce(TextImage.WhiteTextOnly(image));
         return OcrNoise.Score(whiteText.Text) > OcrNoise.Score(raw.Text) ? whiteText : raw;
+    }
+
+    /// <summary>
+    /// Küçük görüntü (küçük Xbox penceresi, düşük çözünürlüklü akış) büyütülerek okunur: Windows yazı tanıması 20 pikselden
+    /// alçak harflerde sözcükleri bozuyordu ("Ohr", "sne", "Donlt"). Hedef, 1080p'deki altyazı alanının yüksekliği.
+    /// Kutular görüntüye oranla verildiği için büyütme yerleşimi değiştirmez.
+    /// </summary>
+    internal static Frame Enlarged(Frame image)
+    {
+        const int Target = 380;
+        if (image.Height >= 300 || image.Height < 40) return image;
+        var scale = Math.Min(2.0, (double)Target / image.Height);
+        int width = (int)(image.Width * scale), height = (int)(image.Height * scale);
+        if (width > OcrEngine.MaxImageDimension || height > OcrEngine.MaxImageDimension) return image;
+        var source = image.Pixels;
+        int sourceStride = image.Stride, stride = width * 4;
+        var pixels = new byte[stride * height];
+        for (var y = 0; y < height; y++)
+        {
+            var sy = Math.Min(image.Height - 1.001, (y + 0.5) / scale - 0.5);
+            if (sy < 0) sy = 0;
+            int y0 = (int)sy, y1 = Math.Min(y0 + 1, image.Height - 1);
+            var fy = sy - y0;
+            for (var x = 0; x < width; x++)
+            {
+                var sx = Math.Min(image.Width - 1.001, (x + 0.5) / scale - 0.5);
+                if (sx < 0) sx = 0;
+                int x0 = (int)sx, x1 = Math.Min(x0 + 1, image.Width - 1);
+                var fx = sx - x0;
+                int a = y0 * sourceStride + x0 * 4, b = y0 * sourceStride + x1 * 4, c = y1 * sourceStride + x0 * 4, d = y1 * sourceStride + x1 * 4;
+                var o = y * stride + x * 4;
+                for (var k = 0; k < 4; k++)
+                {
+                    var top = source[a + k] + (source[b + k] - source[a + k]) * fx;
+                    var bottom = source[c + k] + (source[d + k] - source[c + k]) * fx;
+                    pixels[o + k] = (byte)(top + (bottom - top) * fy + 0.5);
+                }
+            }
+        }
+        return new Frame(pixels, width, height, stride);
     }
 
     private Reading RecognizeOnce(Frame image)

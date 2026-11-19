@@ -88,6 +88,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                 case StabilizerKind.Clear:
                     lineOnScreen = null;
                     onScreenText = null;
+                    shownKey = null;
                     sender.Clear();
                     break;
                 case StabilizerKind.None:
@@ -112,7 +113,10 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                         if (recent.Count > 32) recent.RemoveAt(0);
                     }
                     // Anlık modda yeni satır gelir gelmez eskisinin çevirisi kalkar; yenisinin çevirisi ardından gelir.
-                    if (instant && lastShown > 0) { sender.Clear(); onScreenText = null; }
+                    // Ama TV'deki satırın bozuk yeniden okumasıysa ("Ohr yeah" / "Oh yeah", sıkıştırılmış Xbox görüntüsü)
+                    // çevirisi kaldırılmaz: kaldırılınca altyazı bir görünüp bir kayboluyordu, bozuk okumanın çevirisi
+                    // boş da gelebiliyordu. Yeni okumanın çevirisi gelince yerine geçer.
+                    if (instant && lastShown > 0 && !IsVariantOfShown(key)) { sender.Clear(); onScreenText = null; shownKey = null; }
                     var number = ++lastRequested;
                     var current = session;
                     lineOnScreen = number;
@@ -182,6 +186,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             lastShown = number;
             lastShownAt = Environment.TickCount64;
             onScreenText = null;
+            shownKey = null;
             sender.SendSubtitle(translated, ReadingTime(translated), null);
             LastPair = (english, translated);
             Remember(english, translated);
@@ -282,6 +287,14 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     /// Aynı replik mi: karakter/sözcük benzerliği ya da biri ötekinin sonu ("here take my radio" ile konuşmacı adı
     /// sonradan beliren "moon here take my radio").
     /// </summary>
+    /// <summary>TV'de gösterilen satırın (sadeleştirilmiş kaynak metni) bozuk ya da biraz farklı yeniden okuması mı.</summary>
+    private bool IsVariantOfShown(string key) =>
+        shownKey is { } shown && Math.Min(key.Length, shown.Length) >= 5
+        && (SameLine(key, shown) || TextMatch.IsSimilar(key, shown, 0.6));
+
+    /// <summary>TV'de şu an duran çevirinin kaynak metni (sadeleştirilmiş); TV temizlenince null.</summary>
+    private string? shownKey;
+
     public static bool SameLine(string a, string b)
     {
         if (TextMatch.IsSameSubtitle(a, b)) return true;
@@ -399,6 +412,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             // Satır hâlâ ekrandaysa kalkınca silinir; kalktıysa okunacak kadar gösterilir.
             Send(translated, number, box);
             LastPair = (source, translated);
+            shownKey = TextMatch.Normalize(source);
             LastBox = box;
             Remember(source, translated);
         }
@@ -432,7 +446,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                 changed = true;
             }
             // Yapay zekâ ekrandakinin altyazı olmadığını söyledi (silah adı, gösterge): hızlı çeviri kaldırılır.
-            else if (current == session && number == lastShown && better is { Length: 0 }) { sender.Clear(); onScreenText = null; }
+            else if (current == session && number == lastShown && better is { Length: 0 }) { sender.Clear(); onScreenText = null; shownKey = null; }
             if (current == session && better is not null) Remember(source, better);
         }
         if (changed) PairShown?.Invoke(source, better!);
@@ -451,6 +465,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             lastReading = Reading.Empty;
             schedule.Reset();
             onScreenText = null;
+            shownKey = null;
             shownLines.Clear();
             if (stabilizer.Reset() == StabilizerAction.Clear) sender.Clear();
         }
