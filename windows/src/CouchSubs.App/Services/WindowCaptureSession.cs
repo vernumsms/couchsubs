@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
@@ -23,6 +24,8 @@ public sealed class WindowCaptureSession(string titleContains) : IStreamSession
 {
     private static readonly TimeSpan FrameInterval = TimeSpan.FromMilliseconds(66);
     private static readonly TimeSpan SearchInterval = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan FastSearchInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan MissingGrace = TimeSpan.FromSeconds(8);
 
     private readonly Lock gate = new();
     private CancellationTokenSource? loop;
@@ -69,12 +72,17 @@ public sealed class WindowCaptureSession(string titleContains) : IStreamSession
 
     private async Task RunAsync(CancellationToken token)
     {
+        // Pencere kısa süre kaybolup geri gelirse (Xbox uygulaması oyuna geçerken pencereyi yeniler) bağlantı kopmuş sayılmaz;
+        // kopmuş sayılırsa TV'deki altyazı silinir ve çeviri sıfırlanır.
+        var missingSince = Stopwatch.GetTimestamp();
+        var reportedMissing = false;
         while (!token.IsCancellationRequested)
         {
             Capture? current;
             lock (gate) current = capture;
             if (current is null || current.Closed)
             {
+                if (current is not null) Log("pencere kapandı");
                 current?.Dispose();
                 current = TryOpen();
                 lock (gate)
@@ -84,10 +92,22 @@ public sealed class WindowCaptureSession(string titleContains) : IStreamSession
                 }
             }
             if (current is null || current.Closed)
-                Report(SessionState.Disconnected(DisconnectKind.ConsoleAsleep, "window"));
-            else if (current.Delivering)
-                Report(SessionState.Streaming);
-            try { await Task.Delay(SearchInterval, token); } catch (OperationCanceledException) { return; }
+            {
+                if (!reportedMissing && Stopwatch.GetElapsedTime(missingSince) > MissingGrace)
+                {
+                    reportedMissing = true;
+                    Log("pencere bulunamadı");
+                    Report(SessionState.Disconnected(DisconnectKind.ConsoleAsleep, "window"));
+                }
+            }
+            else
+            {
+                missingSince = Stopwatch.GetTimestamp();
+                reportedMissing = false;
+                if (current.Delivering) Report(SessionState.Streaming);
+            }
+            try { await Task.Delay(current is { Delivering: true } ? SearchInterval : FastSearchInterval, token); }
+            catch (OperationCanceledException) { return; }
         }
     }
 
@@ -97,12 +117,38 @@ public sealed class WindowCaptureSession(string titleContains) : IStreamSession
         if (window == IntPtr.Zero) return null;
         try
         {
-            return new Capture(window, frame => FrameReceived?.Invoke(frame));
+            var opened = new Capture(window, frame => FrameReceived?.Invoke(frame));
+            Log($"pencere açıldı: {Describe(window)}");
+            return opened;
         }
         catch (Exception e)
         {
-            Debug.WriteLine($"Pencere okunamadı: {e.Message}");
+            Log($"pencere okunamadı: {Describe(window)} | {e.GetType().Name}: {e.Message}");
             return null;
+        }
+    }
+
+    private static string Describe(IntPtr window)
+    {
+        GetWindowThreadProcessId(window, out var process);
+        GetWindowRect(window, out var rect);
+        return $"{ProcessName(process, [])} '{Title(window)}' {rect.Right - rect.Left}x{rect.Bottom - rect.Top}";
+    }
+
+    /// <summary>%LOCALAPPDATA%\CouchSubs\pencere.log: pencere bulma/kapanma olayları (Xbox sorunlarını uzaktan anlamak için).</summary>
+    private static void Log(string message)
+    {
+        try
+        {
+            var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CouchSubs");
+            Directory.CreateDirectory(folder);
+            var path = Path.Combine(folder, "pencere.log");
+            if (System.IO.File.Exists(path) && new FileInfo(path).Length > 512 * 1024) System.IO.File.Delete(path);
+            System.IO.File.AppendAllText(path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {message}{Environment.NewLine}");
+        }
+        catch (Exception)
+        {
+            // Günlük yazılamaması yakalamayı durdurmaz.
         }
     }
 
