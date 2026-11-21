@@ -119,7 +119,12 @@ public sealed class LiveServices : IAppServices
                     throw;
                 }
             }, () => SamsungDiscovery.SearchAsync(), onMoved);
-            return new Keeper(new TvKeeper(samsungLocator.ConnectAsync, SamsungClient.AppId, parameters, appConnected));
+            return new Keeper(new TvKeeper(samsungLocator.ConnectAsync, SamsungClient.AppId, parameters, appConnected,
+                restart: async () =>
+                {
+                    await SamsungApps.RestartAsync(samsungLocator.Current.Host, SamsungClient.AppId);
+                    AiLog.Write("tv-yeniden-baslatildi", 0, samsungLocator.Current.Host, null);
+                }));
         }
         var locator = new TvLocator(tv, async target =>
         {

@@ -16,6 +16,9 @@ public sealed class TvLocator(
     private LgTv current = tv;
     private Stopwatch? sinceSearch;
 
+    /// <summary>TV'nin bilinen son adresi (ağda yeniden bulunduysa yenisi).</summary>
+    public LgTv Current => current;
+
     public async Task<ITvControl> ConnectAsync()
     {
         try

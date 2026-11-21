@@ -192,6 +192,34 @@ public class TvKeeperTests
     }
 
     [Fact]
+    public async Task SamsungRestartsTheAppWhenLaunchDidNotHelp()
+    {
+        var control = new FakeControl();
+        var connected = false;
+        var restarts = 0;
+        var failRestart = false;
+        var keeper = new TvKeeper(() => Task.FromResult<ITvControl>(control), "com.couchsubs.tv",
+            new Dictionary<string, string>(), () => connected, TimeSpan.Zero,
+            restart: () => { restarts++; return failRestart ? throw new HttpRequestException("TV yok") : Task.CompletedTask; });
+        await keeper.TickAsync(); // ilk deneme: uzaktan kumandayla aç
+        Assert.Single(control.Launches);
+        Assert.Equal(0, restarts);
+        await keeper.TickAsync(); // işe yaramadı → kapat ve yeniden başlat
+        Assert.Equal(1, restarts);
+        Assert.Single(control.Launches);
+        failRestart = true;
+        await keeper.TickAsync(); // yeniden başlatma olmadı → bağlanma denemesine düşer (TV ağda aranabilsin)
+        Assert.Equal(2, control.Launches.Count);
+        connected = true;
+        await keeper.TickAsync();
+        connected = false;
+        failRestart = false;
+        await keeper.TickAsync(); // bağlandıktan sonra sayaç sıfırlandı → yine önce uzaktan kumanda
+        Assert.Equal(3, control.Launches.Count);
+        Assert.Equal(2, restarts);
+    }
+
+    [Fact]
     public async Task RelaunchesOnlyWhenHdmiInputIsInFront()
     {
         var control = new FakeControl("com.couchsubs.tv", "com.webos.app.hdmi2", "com.couchsubs.tv", "netflix");

@@ -120,6 +120,27 @@ public sealed class SamsungClient(Uri url, TimeSpan? approvalTimeout = null) : I
     }
 }
 
+/// <summary>
+/// Samsung'un 8001 portundaki uygulama arayüzü. İzin sorusu gerektirmez; uzaktan kumanda bağlantısıyla "aç" demek arka
+/// plana düşmüş uygulamayı öne getirmediğinde uygulama burada kapatılıp yeniden başlatılır. Parametresiz başlayan TV
+/// uygulaması kayıtlı adresi, olmazsa ağı tarayıp bilgisayarı kendisi bulur.
+/// </summary>
+public static class SamsungApps
+{
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
+
+    private static string Url(string host, string appId) => $"http://{host}:8001/api/v2/applications/{appId}";
+
+    public static async Task RestartAsync(string host, string appId, CancellationToken cancellationToken = default)
+    {
+        var url = Url(host, appId);
+        (await Http.DeleteAsync(url, cancellationToken)).Dispose(); // kapalıysa da 200 döner
+        await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+        using var response = await Http.PostAsync(url, null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+}
+
 /// <summary>Yerel ağdaki Samsung TV'leri SSDP ile bulur.</summary>
 public static class SamsungDiscovery
 {

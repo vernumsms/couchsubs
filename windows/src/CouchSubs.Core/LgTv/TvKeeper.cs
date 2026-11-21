@@ -11,13 +11,20 @@ namespace CouchSubs.Core.LgTv;
 /// bir dokunulur: uygulama açılır, bağlantı hemen kapatılır. Samsung önplandaki uygulamayı söylemediği için sürekli açık
 /// "uzaktan kumanda" bağlantısı gereksizdi; yeniden kurulan bağlantı TV'de bildirim çıkarıp PS5 kolunu düşürüyordu (#5).
 /// </param>
+/// <param name="restart">
+/// Verilirse (Samsung): açma denemesi işe yaramadıysa sonraki denemelerde TV uygulaması kapatılıp yeniden başlatılır.
+/// TV bekleme moduna girince ya da kaynak değişince uygulama arka planda çalışır kalır; uzaktan kumanda bağlantısıyla
+/// "aç" demek onu öne getirmez ve bilgisayara yeniden bağlanmaz.
+/// </param>
 public sealed class TvKeeper(Func<Task<ITvControl>> connect, string appId, IReadOnlyDictionary<string, string> parameters,
-                             Func<bool>? appConnected = null, TimeSpan? relaunchInterval = null) : IDisposable
+                             Func<bool>? appConnected = null, TimeSpan? relaunchInterval = null,
+                             Func<Task>? restart = null) : IDisposable
 {
     private readonly SemaphoreSlim tickLock = new(1, 1);
     private ITvControl? control;
     private CancellationTokenSource? loop;
     private DateTime? lastLaunch;
+    private int missedLaunches;
 
     /// <summary>Kullanıcının bilerek açtığı uygulamalara (Netflix vb.) dokunulmaz; yalnız giriş ve yayın ekranları.</summary>
     public static bool IsInputOrLiveTv(string appId) =>
@@ -59,11 +66,28 @@ public sealed class TvKeeper(Func<Task<ITvControl>> connect, string appId, IRead
 
     private async Task LaunchIfAppIsAwayAsync(bool connected)
     {
-        if (connected) return;
+        if (connected)
+        {
+            missedLaunches = 0;
+            return;
+        }
         if (lastLaunch is { } last && DateTime.UtcNow - last < (relaunchInterval ?? TimeSpan.FromSeconds(30))) return;
         lastLaunch = DateTime.UtcNow;
+        missedLaunches++;
         try
         {
+            if (restart is not null && missedLaunches >= 2)
+            {
+                try
+                {
+                    await restart();
+                    return;
+                }
+                catch (Exception)
+                {
+                    // Kayıtlı adreste TV yok: aşağıdaki bağlantı denemesi gerekirse ağda yeniden arar.
+                }
+            }
             using var fresh = await connect();
             await fresh.LaunchAsync(appId, parameters);
         }
@@ -95,6 +119,7 @@ public sealed class TvKeeper(Func<Task<ITvControl>> connect, string appId, IRead
         control?.Dispose();
         control = null;
         lastLaunch = null;
+        missedLaunches = 0;
     }
 
     public void Stop()
