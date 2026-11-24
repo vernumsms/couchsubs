@@ -119,11 +119,20 @@ public sealed class LiveServices : IAppServices
                     throw;
                 }
             }, () => SamsungDiscovery.SearchAsync(), onMoved);
+            _ = Task.Run(() => TvMac.Learn(tv.Host));
             return new Keeper(new TvKeeper(samsungLocator.ConnectAsync, SamsungClient.AppId, parameters, appConnected,
                 restart: async () =>
                 {
                     await SamsungApps.RestartAsync(samsungLocator.Current.Host, SamsungClient.AppId);
                     AiLog.Write("tv-yeniden-baslatildi", 0, samsungLocator.Current.Host, null);
+                    TvMac.Learn(samsungLocator.Current.Host);
+                },
+                wake: async () =>
+                {
+                    var host = samsungLocator.Current.Host;
+                    if (await Task.Run(() => TvMac.Learn(host) ?? TvMac.Saved) is not { } mac) return;
+                    await WakeOnLan.SendAsync(mac, host);
+                    AiLog.Write("tv-uyandirildi", 0, $"{host} {WakeOnLan.FormatMac(mac)}", null);
                 }));
         }
         var locator = new TvLocator(tv, async target =>
@@ -304,6 +313,8 @@ public sealed class LiveServices : IAppServices
         public void Start(TimeSpan interval) { }
         public void Stop() { }
         public void Reconnect() { }
+        public void RepairNow() { }
+        public TvReach Reach => TvReach.Unknown;
     }
 
     private sealed class Keeper(TvKeeper keeper) : IKeeper
@@ -311,6 +322,46 @@ public sealed class LiveServices : IAppServices
         public void Start(TimeSpan interval) => keeper.Start(interval);
         public void Stop() => keeper.Stop();
         public void Reconnect() => keeper.Reconnect();
+        public void RepairNow() => keeper.RepairNow();
+        public TvReach Reach => keeper.Reach;
+    }
+
+    /// <summary>
+    /// TV'nin ağ kartı adresi (MAC): uyandırma paketi buna gönderilir. TV açıkken ARP ile öğrenilir ve saklanır; TV
+    /// bekleme modunda ARP'ye cevap vermezse saklanan kullanılır.
+    /// </summary>
+    private static class TvMac
+    {
+        private static string FilePath => Path.Combine(AppPaths.Data, "tv-mac.txt");
+
+        [System.Runtime.InteropServices.DllImport("iphlpapi.dll", ExactSpelling = true)]
+        private static extern int SendARP(uint destIp, uint srcIp, byte[] macAddr, ref uint macAddrLen);
+
+        public static byte[]? Saved
+        {
+            get
+            {
+                try { return File.Exists(FilePath) ? WakeOnLan.ParseMac(File.ReadAllText(FilePath)) : null; }
+                catch (IOException) { return null; }
+            }
+        }
+
+        /// <summary>ARP ile sorar; bulursa saklar ve döner.</summary>
+        public static byte[]? Learn(string host)
+        {
+            try
+            {
+                if (!System.Net.IPAddress.TryParse(host, out var ip) || ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) return null;
+                var mac = new byte[6];
+                uint length = 6;
+                if (SendARP(BitConverter.ToUInt32(ip.GetAddressBytes()), 0, mac, ref length) != 0 || length != 6) return null;
+                if (WakeOnLan.ParseMac(WakeOnLan.FormatMac(mac)) is null) return null;
+                Directory.CreateDirectory(AppPaths.Data);
+                File.WriteAllText(FilePath, WakeOnLan.FormatMac(mac));
+                return mac;
+            }
+            catch (Exception) { return null; }
+        }
     }
 
     /// <summary>OPUS-MT modelleri; şimdilik yalnız İngilizce→Türkçe.</summary>

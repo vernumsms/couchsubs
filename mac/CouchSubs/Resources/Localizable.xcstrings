@@ -3767,6 +3767,54 @@
         }
       }
     },
+    "TV is not responding": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV is not responding"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV cevap vermiyor"
+          }
+        }
+      }
+    },
+    "Reconnect the TV": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnect the TV"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'yi yeniden bağla"
+          }
+        }
+      }
+    },
+    "The TV is not answering on the network. Hold the power button on the TV remote until the Samsung logo appears (or unplug the TV for 30 seconds). The app reconnects by itself afterwards.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The TV is not answering on the network. Hold the power button on the TV remote until the Samsung logo appears (or unplug the TV for 30 seconds). The app reconnects by itself afterwards."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV ağda cevap vermiyor. TV kumandasındaki güç tuşuna Samsung logosu çıkana kadar basılı tutun (ya da TV'nin fişini 30 saniye çekin). Sonrasında uygulama kendiliğinden bağlanır."
+          }
+        }
+      }
+    },
     "Waiting for the TV app": {
       "localizations": {
         "en": {

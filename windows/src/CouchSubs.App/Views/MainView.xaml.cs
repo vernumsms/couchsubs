@@ -74,6 +74,8 @@ public partial class MainView : UserControl
         if (controller.IsRunning) controller.Stop(); else await controller.StartAsync();
     }
 
+    private void OnRepairTv(object sender, RoutedEventArgs e) => controller.RepairTv();
+
     private void OnSettings(object sender, RoutedEventArgs e) => SettingsWindow.Open(Window.GetWindow(this), controller);
 
     // Oyun adına tıklanınca Ayarlar "Oyun" sekmesinde açılır.

@@ -121,6 +121,10 @@ public interface IKeeper
     void Start(TimeSpan interval);
     void Stop();
     void Reconnect();
+    /// <summary>Kullanıcı "TV'yi yeniden bağla" dedi: TV uygulaması hemen yeniden başlatılır, TV cevap vermezse uyandırılır.</summary>
+    void RepairNow();
+    /// <summary>TV'nin son denemedeki durumu (denetlenemeyen TV'lerde Unknown).</summary>
+    CouchSubs.Core.LgTv.TvReach Reach { get; }
 }
 
 /// <summary>Cihaz üstü çeviri modeli: kurulu mu, indir, çevirmen oluştur.</summary>

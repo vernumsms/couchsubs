@@ -75,6 +75,13 @@
                     <c:StatusRow Title="{Binding SourceTitle}" Value="{Binding Ps5StatusText}" Tone="{Binding Ps5Tone}" />
                     <Separator />
                     <c:StatusRow Title="TV" Value="{Binding TvStatusText}" Tone="{Binding TvTone}" />
+                    <!-- TV uygulaması bağlanmadı: tek tıkla yeniden başlat / uyandır; TV hiç cevap vermiyorsa ne yapılacağı -->
+                    <StackPanel Margin="0,8,0,0" Visibility="{Binding CanRepairTv, Converter={StaticResource VisibleIf}}">
+                        <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                   Visibility="{Binding TvUnreachable, Converter={StaticResource VisibleIf}}"
+                                   Text="{t:T 'The TV is not answering on the network. Hold the power button on the TV remote until the Samsung logo appears (or unplug the TV for 30 seconds). The app reconnects by itself afterwards.'}" />
+                        <Button HorizontalAlignment="Left" Content="{t:T 'Reconnect the TV'}" Click="OnRepairTv" />
+                    </StackPanel>
                 </StackPanel>
             </c:Card>
 

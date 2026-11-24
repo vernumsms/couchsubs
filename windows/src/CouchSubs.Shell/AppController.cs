@@ -121,14 +121,29 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     private bool HasSource => UsesXbox || (accountId is not null && console is not null);
     public RegisteredConsole? Console => console;
     public LgTv? Tv => tv;
-    public bool IsRunning { get => isRunning; private set => Set(ref isRunning, value, [nameof(Ps5StatusText), nameof(Ps5Tone), nameof(TvTone)]); }
+    public bool IsRunning { get => isRunning; private set => Set(ref isRunning, value, [nameof(Ps5StatusText), nameof(Ps5Tone), nameof(TvTone), nameof(TvStatusText), nameof(TvUnreachable), nameof(CanRepairTv)]); }
     public bool IsStarting { get => isStarting; private set => Set(ref isStarting, value); }
     public SessionState SessionState { get => sessionState; private set => Set(ref sessionState, value, [nameof(Ps5StatusText), nameof(Ps5Tone)]); }
     public string Ps5StatusText => UsesXbox ? XboxStatusText(sessionState, isRunning, text) : StatusText(sessionState, isRunning, text);
     public StatusTone Ps5Tone => Ps5ToneFor(sessionState, isRunning);
-    public int TvClients { get => tvClients; private set => Set(ref tvClients, value, [nameof(TvTone), nameof(TvStatusText)]); }
+    public int TvClients { get => tvClients; private set => Set(ref tvClients, value, [nameof(TvTone), nameof(TvStatusText), nameof(TvUnreachable), nameof(CanRepairTv)]); }
     public StatusTone TvTone => TvToneFor(tvClients, isRunning);
-    public string TvStatusText => tvClients > 0 ? text["Connected"] : text["Waiting for the TV app"];
+    public string TvStatusText => tvClients > 0 ? text["Connected"]
+        : TvUnreachable ? text["TV is not responding"]
+        : text["Waiting for the TV app"];
+
+    /// <summary>
+    /// Çeviri 20 saniyedir sürüyor, TV uygulaması bağlı değil ve TV ağda hiç cevap vermiyor (kapalı, bekleme modunda ya da
+    /// ağ bağlantısı takılmış): ana ekranda ne yapılacağı yazılır.
+    /// </summary>
+    public bool TvUnreachable => isRunning && tvClients == 0 && keeper?.Reach == CouchSubs.Core.LgTv.TvReach.Unreachable
+                                 && tvWaitingSince is { } since && Clock() - since >= TimeSpan.FromSeconds(20);
+
+    /// <summary>Çeviri sürüyor ama TV uygulaması bağlı değil: "TV'yi yeniden bağla" düğmesi görünür.</summary>
+    public bool CanRepairTv => isRunning && tvClients == 0 && keeper is not null;
+
+    /// <summary>Kullanıcı istedi: TV uygulaması hemen yeniden başlatılır, TV cevap vermezse ağdan uyandırılır.</summary>
+    public void RepairTv() => keeper?.RepairNow();
     public string LastSource { get => lastSource; private set => Set(ref lastSource, value); }
     public string LastTranslation { get => lastTranslation; private set => Set(ref lastTranslation, value); }
     /// <summary>Bu oturumda TV'ye gönderilen çeviri sayısı (ana ekranda).</summary>
@@ -1119,6 +1134,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public async Task CheckConnectionsAsync()
     {
         UpdateTroubleClocks();
+        // TV'nin ağ durumu arka planda değişir (TvKeeper); ana ekran her denetimde yeniden okur.
+        Changed(nameof(TvStatusText), nameof(TvUnreachable), nameof(CanRepairTv));
         if (!isRunning || services.Firewall is not { } firewall) return;
         if (ps5TroubleSince is null && tvWaitingSince is null)
         {

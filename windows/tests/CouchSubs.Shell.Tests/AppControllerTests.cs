@@ -51,6 +51,9 @@ internal sealed class FakeKeeper : IKeeper
     public void Stop() => Running = false;
     public int Reconnects { get; private set; }
     public void Reconnect() => Reconnects++;
+    public int Repairs { get; private set; }
+    public void RepairNow() => Repairs++;
+    public CouchSubs.Core.LgTv.TvReach Reach { get; set; }
 }
 
 internal sealed class FakeTranslation : ITranslationModel
