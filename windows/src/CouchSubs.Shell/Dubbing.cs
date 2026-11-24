@@ -32,6 +32,11 @@ public sealed record DubbingSettings
     public DubbingEngine Engine { get; init; } = DubbingEngine.Natural;
     public DubbingOutput Output { get; init; } = DubbingOutput.Tv;
     public VoiceCast Cast { get; init; } = new();
+    /// <summary>
+    /// Oyun oynanırken karakterlerin sesleri bu bilgisayarda toplanır; dublaj her karakteri kendi sesine benzer bir
+    /// sesle okur (yalnız doğal seste). Dublaj kapalıyken de toplanır ki açıldığında sesler hazır olsun.
+    /// </summary>
+    public bool CharacterVoices { get; init; } = true;
 }
 
 /// <summary>Seslendirme motoru (gerçekte uygulamayla gelen pocket-tts, bkz. <see cref="PocketTtsServer"/>).</summary>
@@ -81,6 +86,46 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
 
     public VoiceCast Cast { get; set; } = new();
     public DubbingOutput Output { get; set; } = DubbingOutput.Tv;
+
+    /// <summary>
+    /// Karakterin kendi sesinden yapılmış örnek (bkz. <see cref="CharacterVoices"/>); ikinci değer: konuşmacı adı yoksa
+    /// son konuşmanın sesinden tanınsın mı. Örnek yoksa null, cümle hazır sesle okunur.
+    /// </summary>
+    public Func<SpokenLine, bool, VoicePrompt?>? CharacterVoice { get; set; }
+
+    private readonly HashSet<string> publishedPrompts = new(StringComparer.Ordinal);
+    private SubtitleServer? promptsOn;
+
+    /// <summary>Örnek altyazı sunucusunda yayınlanır (bir kez); pocket-tts oradan alır.</summary>
+    private Uri PublishPrompt(VoicePrompt prompt)
+    {
+        lock (gate)
+        {
+            var current = server();
+            if (!ReferenceEquals(promptsOn, current))
+            {
+                publishedPrompts.Clear();
+                promptsOn = current;
+            }
+            if (publishedPrompts.Add(prompt.Path)) current.Publish(prompt.Wav, prompt.Path);
+        }
+        return new Uri($"http://127.0.0.1:{serverPort()}{prompt.Path}");
+    }
+
+    /// <summary>Satırın sesi: karakterin kendi sesi varsa o, yoksa hazır ses. Hata dublajı durdurmaz.</summary>
+    private (Uri Url, string? Character) VoiceUrl(SpokenLine line, Uri fallback, bool identify)
+    {
+        if (CharacterVoice is not { } find) return (fallback, null);
+        try
+        {
+            return find(line, identify) is { } prompt ? (PublishPrompt(prompt), prompt.Character) : (fallback, null);
+        }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            Log?.Invoke("dublaj-karakter-sesi-hatasi", 0, error.Message);
+            return (fallback, null);
+        }
+    }
     /// <summary>Yeni bir karaktere ses verildi; ayarlara kaydedilir (arayüz iş parçacığında).</summary>
     public event Action<VoiceCast>? CastChanged;
     public event Action<string>? Failed;
@@ -269,11 +314,23 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
         var alone = preview is null && line.Background && extra.Count == 0;
         var engine = Synthesizer();
         var logText = line.Turkish + (extra.Count > 0 ? $"  (+{extra.Count} arka plan)" : "");
+        var mainLine = line;
+        var backgroundLines = backgrounds;
+        var isPreview = preview is not null;
         return Task.Run<(SpeechAudio, bool, int, string, long)?>(async () =>
         {
             try
             {
                 var clock = System.Diagnostics.Stopwatch.StartNew();
+                // Karakterin kendi sesi: adı varsa adından, yoksa son konuşmanın sesinden tanınır (yalnız ana replik).
+                if (!isPreview)
+                {
+                    var (cloneUrl, character) = VoiceUrl(mainLine, url, identify: mainLine.Speaker is null && !mainLine.Background);
+                    url = cloneUrl;
+                    if (character is not null) logText = $"[{character}] " + logText;
+                    for (var i = 0; i < extra.Count; i++)
+                        extra[i] = (extra[i].Text, VoiceUrl(backgroundLines[i], extra[i].Url, identify: false).Url);
+                }
                 var main = engine.SynthesizeAsync(text, url);
                 var others = extra.Select(async item =>
                 {

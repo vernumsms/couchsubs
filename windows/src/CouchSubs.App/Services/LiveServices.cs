@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using CouchSubs.Core;
+using CouchSubs.Core.Dubbing;
 using CouchSubs.Core.LgTv;
 using CouchSubs.RemotePlay;
 using CouchSubs.Shell;
@@ -48,6 +49,8 @@ public sealed class LiveServices : IAppServices
 
     public Task<OnlineKeyCheck> CheckAiKeyAsync(string key, string model) => AnthropicCompletion.CheckAsync(key, model);
     public IDubbingModel? Dubbing { get; } = PocketDubbingModel.EngineBundled ? new PocketDubbingModel() : null;
+    public ISpeakerModel? Speaker { get; } = new SpeakerEmbeddingModel(Path.Combine(AppPaths.Models, "speaker"));
+    public string? CharacterVoicesRoot { get; } = Path.Combine(AppPaths.Data, "sesler");
     public IDubbingModel? FastDubbing { get; } = WindowsVoiceModel.Available ? new WindowsVoiceModel() : null;
     public IAudioOutput? Audio { get; } = new WindowsAudioOutput();
     public IUpdater? Updater { get; } = new Updater();

@@ -3815,6 +3815,54 @@
         }
       }
     },
+    "Use the characters' own voices": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Use the characters' own voices" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Karakterlerin kendi seslerini kullan" } }
+      }
+    },
+    "Delete collected voices": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Delete collected voices" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Toplanan sesleri sil" } }
+      }
+    },
+    "First download the speech model under Settings › Game (translate speech without subtitles); it is also used to collect the voices.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "First download the speech model under Settings › Game (translate speech without subtitles); it is also used to collect the voices." } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Önce Ayarlar › Oyun bölümünden konuşma modelini indirin (altyazısız konuşmayı çevir); sesler de onunla toplanır." } }
+      }
+    },
+    "Only works with the Natural voice.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Only works with the Natural voice." } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Yalnız doğal seste çalışır." } }
+      }
+    },
+    "While you play, the characters' voices are collected on this computer (nothing is uploaded). Each character is then dubbed with a voice similar to its own. Works best when you replay a game.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "While you play, the characters' voices are collected on this computer (nothing is uploaded). Each character is then dubbed with a voice similar to its own. Works best when you replay a game." } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Oynarken karakterlerin sesleri bu bilgisayarda toplanır (hiçbir yere gönderilmez). Sonra her karakter kendi sesine benzeyen bir sesle seslendirilir. En iyi sonucu oyunu ikinci kez oynarken verir." } }
+      }
+    },
+    "%lld characters' voices are ready": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "%lld characters' voices are ready" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "%lld karakterin sesi hazır" } }
+      }
+    },
+    "Delete all collected character voices for this game?": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Delete all collected character voices for this game?" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Bu oyun için toplanan bütün karakter sesleri silinsin mi?" } }
+      }
+    },
+    "Character voice recognition: WeSpeaker ResNet34 (VoxCeleb, CC BY 4.0).": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Character voice recognition: WeSpeaker ResNet34 (VoxCeleb, CC BY 4.0)." } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Karakter sesi tanıma: WeSpeaker ResNet34 (VoxCeleb, CC BY 4.0)." } }
+      }
+    },
     "Waiting for the TV app": {
       "localizations": {
         "en": {

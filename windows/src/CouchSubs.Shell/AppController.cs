@@ -191,6 +191,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             if (!Set(ref settings, value, [nameof(DubbingOn), nameof(ListenOn), nameof(GameName), nameof(UsesXbox), nameof(SourceTitle), nameof(Ps5StatusText)])) return;
             settingsStore.Save(value);
             server.SendStyle(value.Style);
+            if (old.GameName != value.GameName) CharacterVoicesChanged();
             if (old.Dubbing != value.Dubbing) DubbingSettingsChanged(old.Dubbing);
             if (isRunning && (old.SourceLanguage != value.SourceLanguage || old.TargetLanguage != value.TargetLanguage
                               || old.OnlineTranslation != value.OnlineTranslation || old.AiTranslation != value.AiTranslation
@@ -798,7 +799,12 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             stream.StateChanged += state => post(() => SessionStateChanged(state));
             stream.FrameReceived += HandleFrame;
             if (stream is IConsoleRelocator relocator) relocator.ConsoleMoved += moved => post(() => ConsoleMoved(moved));
-            if (stream is IGameAudioSource audio && settings.ListenToGame && GameSpeechInstalled) StartListening(audio);
+            // Oyun sesi: konuşmayı dinleyip altyazısız konuşmayı göstermek ve/veya karakterlerin seslerini toplamak için.
+            if (stream is IGameAudioSource audio && GameSpeechInstalled && (settings.ListenToGame || WantsCharacterVoices))
+            {
+                if (WantsCharacterVoices) StartCharacterVoices();
+                StartListening(audio, showHeard: settings.ListenToGame);
+            }
             stream.Start();
             session = stream;
 
@@ -823,6 +829,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public void Stop()
     {
         StopListening();
+        characterVoices?.Dispose();
+        characterVoices = null;
         session?.Stop();
         session?.Dispose();
         session = null;
@@ -919,7 +927,12 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         };
         // Model bu arada inmiş olabilir; her çeviri sonucu durumu günceller.
         built.TranslationResult += error => post(() => TranslatorStatus = error ?? TranslatorStatus.Ready);
-        built.SpeechReady += lines => post(() => Speak(lines));
+        built.SpeechReady += lines =>
+        {
+            // Karakter sesleri dublaj kapalıyken de toplanır: replik, oyun sesinden duyulan metinle eşleştirilir.
+            characterVoices?.Shown(lines);
+            post(() => Speak(lines));
+        };
         pipeline = built;
     }
 
@@ -1292,7 +1305,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// PS5'ten oyun sesi istenir; ses konuşma parçalarına bölünür, Whisper yazıya çevirir. Oyun ekranında altyazı
     /// yoksa duyulan konuşma çevrilip TV'de gösterilir. Model yüklenemezse sessizce kapalı kalır.
     /// </summary>
-    private void StartListening(IGameAudioSource audio)
+    private void StartListening(IGameAudioSource audio, bool showHeard)
     {
         if (services.GameSpeech is not { } model) return;
         ISpeechRecognizer recognizer;
@@ -1317,6 +1330,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         {
             if (work.IsCancellationRequested) return;
             lock (feedGate) segmenter.Feed(samples, rate);
+            characterVoices?.Audio.Feed(samples, rate);
         };
         var worker = Task.Run(async () =>
         {
@@ -1329,7 +1343,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                     var text = heard.Text;
                     services.WriteDiagnostic(text is null ? "duyulan-bos" : "duyulan", clock.ElapsedMilliseconds,
                         $"{segment.Samples.Length / (double)SpeechSegmenter.Rate:0.0} sn ses, güven %{heard.Confidence * 100:0}{(text is null ? "" : " => " + text)}");
-                    if (text is not null && pipeline is { } current) await current.ShowHeardAsync(text, segment.StartedAt);
+                    if (text is not null) characterVoices?.Heard(text, segment.StartedAt, segment.Samples.Length / (double)SpeechSegmenter.Rate);
+                    if (showHeard && text is not null && pipeline is { } current) await current.ShowHeardAsync(text, segment.StartedAt);
                 }
             }
             catch (OperationCanceledException) { }
@@ -1343,6 +1358,77 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     }
 
     private Task? listenWorker;
+
+    // --- Karakter sesleri ---
+
+    private CharacterVoices? characterVoices;
+    private int characterVoicesReady = -1;
+
+    /// <summary>Karakter sesleri toplansın mı: ayar açık, doğal ses motoru ve ses tanıma modeli bu derlemede var.</summary>
+    private bool WantsCharacterVoices => settings.Dubbing.CharacterVoices && services.Speaker is not null
+                                         && services.CharacterVoicesRoot is not null && services.Dubbing is not null;
+
+    private string? CharacterVoicesFolder => services.CharacterVoicesRoot is { } root
+        ? Path.Combine(root, CharacterVoices.FolderName(settings.GameName)) : null;
+
+    /// <summary>Bu oyunda kendi sesi hazır karakter sayısı.</summary>
+    public int CharacterVoicesReady
+    {
+        get
+        {
+            if (characterVoicesReady < 0) characterVoicesReady = characterVoices?.ReadyCount
+                ?? (CharacterVoicesFolder is { } folder ? CharacterVoices.CountReady(folder) : 0);
+            return characterVoicesReady;
+        }
+    }
+
+    private void CharacterVoicesChanged()
+    {
+        characterVoicesReady = -1;
+        Changed(nameof(CharacterVoicesReady));
+    }
+
+    /// <summary>Ses tanıma modeli (~26 MB) yoksa arka planda indirilir; oturum sürüyorsa iner inmez toplamaya başlanır.</summary>
+    private void StartCharacterVoices()
+    {
+        if (services.Speaker is not { } model || CharacterVoicesFolder is not { } folder) return;
+        if (!model.IsInstalled)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await model.DownloadAsync(CancellationToken.None);
+                    post(() => { if (isRunning && characterVoices is null && WantsCharacterVoices) StartCharacterVoices(); });
+                }
+                catch (Exception error)
+                {
+                    services.WriteDiagnostic("ses-modeli-indirilemedi", 0, error.Message);
+                }
+            });
+            return;
+        }
+        try
+        {
+            var made = new CharacterVoices(folder, model.CreateEmbedder(), services.WriteDiagnostic);
+            made.Changed += () => post(CharacterVoicesChanged);
+            characterVoices = made;
+            services.WriteDiagnostic("ses-toplama-basladi", 0, $"{made.KnownCount} karakter, {made.ReadyCount} hazır | {folder}");
+        }
+        catch (Exception error)
+        {
+            services.WriteDiagnostic("ses-toplama-acilamadi", 0, error.Message);
+        }
+        CharacterVoicesChanged();
+    }
+
+    /// <summary>Bu oyunda toplanan bütün karakter seslerini siler.</summary>
+    public void ClearCharacterVoices()
+    {
+        if (characterVoices is { } running) running.Clear();
+        else if (CharacterVoicesFolder is { } folder) CharacterVoices.Delete(folder);
+        CharacterVoicesChanged();
+    }
 
     private void StopListening()
     {
@@ -1399,6 +1485,9 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             Cast = settings.Dubbing.Cast.Copy(),
             Output = settings.Dubbing.Output,
             Log = services.WriteDiagnostic,
+            // Karakterin kendi sesi yalnız doğal seste (Windows sesi örnekten okuyamaz).
+            CharacterVoice = (line, identify) =>
+                settings.Dubbing is { CharacterVoices: true, Engine: DubbingEngine.Natural } ? characterVoices?.VoiceFor(line, identify) : null,
         };
         made.CastChanged += cast => Settings = settings with { Dubbing = settings.Dubbing with { Cast = cast } };
         made.Failed += message => DubbingError = message;

@@ -10,6 +10,16 @@
             <CheckBox x:Name="Enabled" Content="{t:T 'Voice the translation in Turkish'}" Foreground="{DynamicResource textPrimaryBrush}"
                       Checked="OnEnabled" Unchecked="OnEnabled" />
             <TextBlock x:Name="SetupHint" Style="{StaticResource HintText}" Margin="0,8,0,0" />
+            <!-- Karakterlerin kendi sesleri: dublaj kapalıyken de toplanır -->
+            <StackPanel x:Name="CharacterPanel" Margin="0,16,0,0">
+                <CheckBox x:Name="CharacterVoicesOn" Foreground="{DynamicResource textPrimaryBrush}"
+                          Checked="OnCharacterVoices" Unchecked="OnCharacterVoices" />
+                <TextBlock x:Name="CharacterHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <TextBlock x:Name="CharacterCount" VerticalAlignment="Center" />
+                    <Button x:Name="ClearVoices" Content="{t:T 'Delete collected voices'}" Margin="12,0,0,0" Click="OnClearVoices" />
+                </StackPanel>
+            </StackPanel>
             <StackPanel x:Name="Options" Margin="0,12,0,0">
                 <StackPanel x:Name="EnginePanel" Margin="0,0,0,16">
                     <TextBlock Text="{t:T 'Voice'}" Margin="0,0,0,8" />

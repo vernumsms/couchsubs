@@ -198,6 +198,10 @@ public interface IAppServices
     void WriteDiagnostic(string kind, long milliseconds, string text) { }
     /// <summary>Oyun sesini yazıya çeviren model (Whisper); bu derlemede yoksa null.</summary>
     IGameSpeechModel? GameSpeech => null;
+    /// <summary>Konuşanı sesinden tanıyan model (karakter sesleriyle dublaj); bu derlemede yoksa null.</summary>
+    CouchSubs.Core.Dubbing.ISpeakerModel? Speaker => null;
+    /// <summary>Toplanan karakter seslerinin kök klasörü (%LOCALAPPDATA%\CouchSubs\sesler); testlerde null.</summary>
+    string? CharacterVoicesRoot => null;
 }
 
 /// <param name="Launched">false ise TV uygulaması açılamadı; büyük olasılıkla TV'de kurulu değil.</param>

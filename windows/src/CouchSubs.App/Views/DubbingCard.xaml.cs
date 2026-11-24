@@ -21,6 +21,8 @@ public partial class DubbingCard : UserControl
         // Kesme işaretli metinler XAML biçimlendirme uzantısına yazılamıyor.
         SetupHint.Text = Localizer.Current["In the game's audio settings, turn the dialogue (voice) volume down; keep music and effects. If the game can show speaker names in subtitles, turn them on: every character then speaks with its own voice."];
         Credits.Text = Localizer.Current["Voices: Pocket TTS Turkish (wite-tech, CC BY 4.0) with Kyutai's pocket-tts. The voices are synthetic, not real people."];
+        CharacterVoicesOn.Content = Localizer.Current["Use the characters' own voices"];
+        Credits.Text += "\n" + Localizer.Current["Character voice recognition: WeSpeaker ResNet34 (VoxCeleb, CC BY 4.0)."];
         Unloaded += (_, _) =>
         {
             if (controller is not null) controller.PropertyChanged -= OnChanged;
@@ -48,7 +50,8 @@ public partial class DubbingCard : UserControl
     private void OnChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(AppController.Settings) or nameof(AppController.DubbingInstalled)
-            or nameof(AppController.DubbingDownloading) or nameof(AppController.DubbingProgress) or nameof(AppController.DubbingError))
+            or nameof(AppController.DubbingDownloading) or nameof(AppController.DubbingProgress) or nameof(AppController.DubbingError)
+            or nameof(AppController.CharacterVoicesReady) or nameof(AppController.GameSpeechInstalled))
             Refresh();
     }
 
@@ -77,7 +80,34 @@ public partial class DubbingCard : UserControl
         Error.Text = controller.DubbingError ?? "";
         Error.Visibility = controller.DubbingError is null ? Visibility.Collapsed : Visibility.Visible;
         BuildVoices(settings.Cast);
+        RefreshCharacterVoices(settings, fast);
         loading = false;
+    }
+
+    private void RefreshCharacterVoices(DubbingSettings settings, bool fast)
+    {
+        if (controller is null) return;
+        CharacterVoicesOn.IsChecked = settings.CharacterVoices;
+        CharacterVoicesOn.IsEnabled = !fast;
+        CharacterHint.Text = Localizer.Current[!controller.GameSpeechInstalled
+            ? "First download the speech model under Settings › Game (translate speech without subtitles); it is also used to collect the voices."
+            : fast
+                ? "Only works with the Natural voice."
+                : "While you play, the characters' voices are collected on this computer (nothing is uploaded). Each character is then dubbed with a voice similar to its own. Works best when you replay a game."];
+        var ready = controller.CharacterVoicesReady;
+        CharacterCount.Text = Localizer.Current["%lld characters' voices are ready"].Replace("%lld", ready.ToString());
+        ClearVoices.IsEnabled = ready > 0 || controller.IsRunning;
+    }
+
+    private void OnCharacterVoices(object sender, RoutedEventArgs e) =>
+        Update(s => s with { Dubbing = s.Dubbing with { CharacterVoices = CharacterVoicesOn.IsChecked == true } });
+
+    private void OnClearVoices(object sender, RoutedEventArgs e)
+    {
+        if (controller is null) return;
+        var answer = MessageBox.Show(Window.GetWindow(this), Localizer.Current["Delete all collected character voices for this game?"],
+            Localizer.Current["Delete collected voices"], MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer == MessageBoxResult.Yes) controller.ClearCharacterVoices();
     }
 
     private void BuildVoices(VoiceCast cast)
