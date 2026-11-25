@@ -97,7 +97,10 @@ public sealed class CharacterVoices : IDisposable
     public const double MinPromptSeconds = 4;
     private const double TargetPromptSeconds = 9;
     private const double MaxPromptSeconds = 12;
-    private const int MaxClips = 6;
+    /// <summary>Karakter başına saklanan kesit: sakin, olağan ve coşkulu söyleyişlerin hepsinden örnek kalsın diye çok.</summary>
+    private const int MaxClips = 16;
+    /// <summary>Satırın coşkusu bundan yüksekse gergin, düşükse sakin örnek kullanılır.</summary>
+    public const double MoodThreshold = 0.6;
     private const int MaxCharacters = 200;
     private const long PendingMs = 15_000;
 
@@ -292,6 +295,11 @@ public sealed class CharacterVoices : IDisposable
 
     private async Task WorkAsync()
     {
+        try { UpgradeOldVoices(); }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            log?.Invoke("ses-toplama-hatasi", 0, error.Message);
+        }
         try
         {
             await foreach (var item in work.Reader.ReadAllAsync(stop.Token))
@@ -301,6 +309,56 @@ public sealed class CharacterVoices : IDisposable
             }
         }
         catch (OperationCanceledException) { }
+    }
+
+    /// <summary>
+    /// Duygu ayrımından önce toplanmış kesitlerin söyleyişi ölçülür ve her duygu için örnek yapılır (bir kez).
+    /// </summary>
+    private void UpgradeOldVoices()
+    {
+        List<Character> old;
+        lock (gate) old = characters.Where(c => c.Format < 2 && c.Clips.Count > 0).ToList();
+        if (old.Count == 0) return;
+        foreach (var character in old)
+        {
+            var measured = new List<Clip>();
+            foreach (var clip in character.Clips)
+            {
+                if (clip.Measured) { measured.Add(clip); continue; }
+                try
+                {
+                    var audio = SpeechAudio.FromWav(File.ReadAllBytes(Path.Combine(ClipsDirectory, clip.File)));
+                    var prosody = Prosody.Measure(To16k(audio.Samples));
+                    measured.Add(clip with
+                    {
+                        Loudness = prosody.Loudness == 0 ? -0.01 : prosody.Loudness,
+                        Pitch = prosody.HasPitch ? prosody.Pitch : 0,
+                        Spread = prosody.HasPitch ? prosody.Spread : 0,
+                    });
+                }
+                catch (Exception error) when (error is IOException or InvalidDataException) { }
+            }
+            lock (gate)
+            {
+                character.Clips = measured;
+                character.Usual = Baseline.Of(measured);
+                BuildPromptLocked(character);
+            }
+        }
+        var merged = 0;
+        lock (gate)
+        {
+            // Bölünmüş karakterler de birleşir (birleşme bir öncekini değiştirebilir; değişiklik bitene kadar).
+            for (var again = true; again;)
+            {
+                again = false;
+                foreach (var character in characters.ToList())
+                    if (characters.Contains(character) && MergeSimilarLocked(character) is not null) { merged++; again = true; }
+            }
+            Save();
+        }
+        log?.Invoke("ses-duygu-hazirlandi", 0, $"{old.Count} karakterin kesitleri duygu örneklerine ayrıldı, {merged} bölünmüş karakter birleşti");
+        Changed?.Invoke();
     }
 
     private void Collect(long startedAt, double seconds, string? speaker, string text)
@@ -314,35 +372,40 @@ public sealed class CharacterVoices : IDisposable
             return;
         }
         var clip = raw[quality.Start..quality.End];
-        if (embedder.Embed(To16k(clip)) is not { } embedding) return;
+        var clip16 = To16k(clip);
+        if (embedder.Embed(clip16) is not { } embedding) return;
+        var prosody = Prosody.Measure(clip16);
 
         Character character;
         double similarity;
         bool created;
+        double mood;
         lock (gate)
         {
-            (character, similarity, created) = Assign(embedding, speaker);
+            (character, similarity, created) = Assign(embedding, speaker, prosody.HasPitch ? prosody.Pitch : 0);
             var file = $"c{character.Id}-{DateTime.UtcNow:yyyyMMddHHmmssfff}.wav";
             Directory.CreateDirectory(ClipsDirectory);
             File.WriteAllBytes(Path.Combine(ClipsDirectory, file), new SpeechAudio(clip, GameAudioRing.Rate).ToWav());
-            character.Clips.Add(new Clip(file, quality.Score, clip.Length / (double)GameAudioRing.Rate));
-            character.Clips.Sort((a, b) => b.Score.CompareTo(a.Score));
-            while (character.Clips.Count > MaxClips)
+            var added = new Clip(file, quality.Score, clip.Length / (double)GameAudioRing.Rate,
+                prosody.Loudness == 0 ? -0.01 : prosody.Loudness, prosody.HasPitch ? prosody.Pitch : 0, prosody.HasPitch ? prosody.Spread : 0);
+            character.Clips.Add(added);
+            var kept = KeepVariedLocked(character);
+            if (kept) BuildPromptLocked(character);
+            if (MergeSimilarLocked(character) is { } survivor)
             {
-                var dropped = character.Clips[^1];
-                character.Clips.RemoveAt(character.Clips.Count - 1);
-                TryDelete(Path.Combine(ClipsDirectory, dropped.File));
+                log?.Invoke("ses-birlesti", 0, $"karakter {character.Label} ile {survivor.Label} aynı kişi; birleştirildi ({survivor.Clips.Count} kesit)");
+                character = survivor;
             }
-            var promptChanged = character.Clips.Take(4).Any(c => c.File == file);
-            if (promptChanged) BuildPromptLocked(character);
             Save();
+            mood = character.Usual.Arousal(added);
         }
         log?.Invoke("ses-kesit", clock.ElapsedMilliseconds,
-            $"karakter {character.Label}{(created ? " (yeni)" : $" benzerlik %{similarity * 100:0}")}, {clip.Length / (double)GameAudioRing.Rate:0.0} sn, {quality}, örnek {character.PromptSeconds:0.0} sn | {text}");
+            $"karakter {character.Label}{(created ? " (yeni)" : $" benzerlik %{similarity * 100:0}")}, {clip.Length / (double)GameAudioRing.Rate:0.0} sn, {quality}, "
+            + $"{(prosody.HasPitch ? $"perde {prosody.Pitch:0} Hz ±{prosody.Spread:0.0}, " : "")}coşku {mood:+0.0;-0.0}, örnek {character.PromptSeconds:0.0} sn | {text}");
         Changed?.Invoke();
     }
 
-    private (Character, double, bool) Assign(float[] embedding, string? speaker)
+    private (Character, double, bool) Assign(float[] embedding, string? speaker, double pitch)
     {
         Character? best = null;
         var bestSimilarity = -1.0;
@@ -372,6 +435,10 @@ public sealed class CharacterVoices : IDisposable
         {
             best = Nearest(embedding, _ => true, out bestSimilarity);
             if (best is null || bestSimilarity < JoinThreshold) return (NewCharacter(embedding, null), 1, true);
+            // Ses imzası sınırda benziyor ama perde bambaşka (erkek ve kadın sesi): ayrı karakterdir. İlk oturumda bir
+            // karaktere hem 124 hem 210 Hz'lik kesitler girmişti; karışık örnek dublajda başka birinin sesini verir.
+            if (bestSimilarity < SurePitchSimilarity && Prosody.Semitones(pitch, MedianPitch(best)) > MaxJoinSemitones)
+                return (NewCharacter(embedding, null), 1, true);
         }
         // Ortalama imza yalnız emin olunan kesitlerle güncellenir; yanlış katılan kesit sesi kaydırmasın.
         if (bestSimilarity >= 0.6 || speaker is not null)
@@ -382,6 +449,51 @@ public sealed class CharacterVoices : IDisposable
         }
         best.Count++;
         return (best, bestSimilarity, false);
+    }
+
+    /// <summary>Ses imzası bundan az benzeyen kesit, perdesi de karakterinkinden çok farklıysa o karaktere katılmaz.</summary>
+    private const double SurePitchSimilarity = 0.65;
+    private const double MaxJoinSemitones = 6;
+    /// <summary>İki karakter, ses imzaları bu kadar benzer ve perdeleri yakınsa aynı kişidir (bkz. MergeSimilarLocked).</summary>
+    private const double MergeSimilarity = 0.45;
+    private const double MergeSemitones = 4;
+
+    /// <summary>Kesitlerin ortanca perdesi (Hz); bilinmiyorsa 0.</summary>
+    private static double MedianPitch(Character character)
+    {
+        var pitches = character.Clips.Where(c => c.Pitch > 0).Select(c => c.Pitch).Order().ToList();
+        return pitches.Count == 0 ? 0 : pitches[pitches.Count / 2];
+    }
+
+    /// <summary>
+    /// Aynı kişi ilk kesitlerinde iki karaktere bölünebiliyor (ilk oturumda Jason ve Lucia'nın birer kesiti ayrı
+    /// karakter olmuştu). Ses imzası benzer ve perdesi yakın karakterler birleşir: azı çoğuna katılır. Adı olan iki
+    /// farklı karakter birleşmez. Birleştiyse kalan karakter döner.
+    /// </summary>
+    private Character? MergeSimilarLocked(Character changed)
+    {
+        foreach (var other in characters)
+        {
+            if (ReferenceEquals(other, changed)) continue;
+            if (changed.Name is not null && other.Name is not null) continue;
+            if (Cosine(changed.Centroid, other.Centroid) < MergeSimilarity) continue;
+            var (a, b) = (MedianPitch(changed), MedianPitch(other));
+            if (a <= 0 || b <= 0 || Prosody.Semitones(a, b) > MergeSemitones) continue;
+            var (keep, gone) = other.Count >= changed.Count ? (other, changed) : (changed, other);
+            var total = keep.Count + gone.Count;
+            for (var i = 0; i < keep.Centroid.Length; i++)
+                keep.Centroid[i] = (float)(((keep.Centroid[i] * keep.Count) + (gone.Centroid[i] * gone.Count)) / total);
+            keep.Centroid = Normalized(keep.Centroid);
+            keep.Count = total;
+            keep.Name ??= gone.Name;
+            keep.Clips.AddRange(gone.Clips);
+            foreach (var mood in Moods) TryDelete(Path.Combine(PromptsDirectory, PromptFile(gone, mood.Name, gone.Version)));
+            characters.Remove(gone);
+            KeepVariedLocked(keep);
+            BuildPromptLocked(keep);
+            return keep;
+        }
+        return null;
     }
 
     private Character NewCharacter(float[] embedding, string? name)
@@ -424,48 +536,225 @@ public sealed class CharacterVoices : IDisposable
     public VoicePrompt? VoiceFor(SpokenLine line, bool identify)
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
+        Character? character = null;
         lock (gate)
         {
             if (line.Speaker is { } speaker && characters.FirstOrDefault(c => c.Name == VoiceCast.Key(speaker)) is { } named)
-                return named.Ready ? PromptLocked(named) : null;
+            {
+                if (!named.Ready) return null;
+                character = named;
+            }
         }
-        if (!identify) return null;
+        if (character is null && !identify) return null;
+
+        // Satırın İngilizcesi şu an (ya da az önce) oyunda söyleniyor: son iki saniyesi hem konuşanı tanımak hem de
+        // nasıl söylendiğini (bağırarak mı, sakin mi) ölçmek için dinlenir.
+        float[]? speech16 = null;
         var now = Audio.Now;
-        if (Audio.Slice(now - 2200, now) is not { } recent) return null;
-        var quality = Quality.Measure(recent, GameAudioRing.Rate, relaxed: true);
-        if (quality.SpeechSeconds < 0.8 || stop.IsCancellationRequested) return null;
-        float[]? embedding;
-        try { embedding = embedder.Embed(To16k(recent[quality.Start..quality.End])); }
-        catch (ObjectDisposedException) { return null; }
-        if (embedding is null) return null;
+        if (Audio.Slice(now - 2200, now) is { } recent && !stop.IsCancellationRequested)
+        {
+            var quality = Quality.Measure(recent, GameAudioRing.Rate, relaxed: true);
+            if (quality.SpeechSeconds >= 0.8) speech16 = To16k(recent[quality.Start..quality.End]);
+        }
+        double similarity = 1;
+        if (character is null)
+        {
+            if (speech16 is null) return null;
+            float[]? embedding;
+            try { embedding = embedder.Embed(speech16); }
+            catch (ObjectDisposedException) { return null; }
+            if (embedding is null) return null;
+            lock (gate)
+            {
+                character = Nearest(embedding, c => c.Ready, out similarity);
+                if (character is null || similarity < MatchThreshold)
+                {
+                    log?.Invoke("ses-tanima", clock.ElapsedMilliseconds, character is null ? "hazır karakter yok"
+                        : $"karakter {character.Label} benzerlik %{similarity * 100:0} (yetersiz) | {line.Turkish}");
+                    return null;
+                }
+            }
+        }
+
+        var prosody = speech16 is null ? default : Prosody.Measure(speech16);
+        var fromText = LineArousal(line);
+        double fromVoice;
+        lock (gate) fromVoice = prosody.HasPitch ? character.Usual.Arousal(prosody.Loudness, prosody.Pitch, prosody.Spread, useLoudness: false) : 0;
+        // Ses ölçülebildiyse esas odur; yazı ipucu yönü belirgin olduğunda ekler (bağıran satırda ünlem de olur).
+        var arousal = prosody.HasPitch ? (fromVoice * 0.7) + (fromText * 0.5) : fromText;
+        var mood = arousal >= MoodThreshold ? VoiceMood.Intense : arousal <= -MoodThreshold ? VoiceMood.Calm : VoiceMood.Normal;
         lock (gate)
         {
-            var best = Nearest(embedding, c => c.Ready, out var similarity);
             log?.Invoke("ses-tanima", clock.ElapsedMilliseconds,
-                best is null ? "hazır karakter yok" : $"karakter {best.Label} benzerlik %{similarity * 100:0}{(similarity >= MatchThreshold ? "" : " (yetersiz)")} | {line.Turkish}");
-            return best is not null && similarity >= MatchThreshold ? PromptLocked(best) : null;
+                $"karakter {character.Label}{(similarity < 1 ? $" benzerlik %{similarity * 100:0}" : "")}, duygu {Moods.First(m => m.Mood == mood).Name} "
+                + $"(ses {(prosody.HasPitch ? fromVoice.ToString("+0.0;-0.0") : "yok")}, yazı {fromText:+0.0;-0.0}) | {line.Turkish}");
+            return PromptLocked(character, mood);
         }
     }
 
-    private VoicePrompt? PromptLocked(Character character)
+    private VoicePrompt? PromptLocked(Character character, VoiceMood mood)
     {
-        var path = $"/voices/klon/c{character.Id}-v{character.Version}.wav";
+        var name = Moods.First(m => m.Mood == mood).Name;
+        var fileName = PromptFile(character, name, character.Version);
+        var path = "/voices/klon/" + fileName;
+        var fallback = mood == VoiceMood.Normal ? null : PromptLocked(character, VoiceMood.Normal);
         if (!promptCache.TryGetValue(path, out var wav))
         {
-            var file = Path.Combine(PromptsDirectory, $"c{character.Id}-v{character.Version}.wav");
-            try { wav = File.ReadAllBytes(file); }
-            catch (IOException) { return null; }
+            try { wav = File.ReadAllBytes(Path.Combine(PromptsDirectory, fileName)); }
+            catch (IOException) { return fallback; }
             promptCache[path] = wav;
         }
-        return new VoicePrompt(path, wav, character.Label);
+        return new VoicePrompt(path, wav, mood == VoiceMood.Normal ? character.Label : $"{character.Label} {name}",
+            character.PromptPitch.GetValueOrDefault(name), fallback);
     }
 
-    /// <summary>En temiz kesitler arka arkaya (araya çeyrek saniye sessizlik), en çok 12 sn; ses seviyesi eşitlenir.</summary>
+    private readonly Dictionary<string, int> failures = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Örnekle yapılan seslendirme karakterin sesini tutturamadı (perde çok saptı). Aynı örnek iki kez tutmazsa,
+    /// içindeki en kısa kesit (kısa ya da arkasında başka ses olan kesit sesi kaydırıyordu) atılıp örnekler yenilenir.
+    /// </summary>
+    public void PromptFailed(VoicePrompt prompt)
+    {
+        lock (gate)
+        {
+            var count = failures[prompt.Path] = failures.GetValueOrDefault(prompt.Path) + 1;
+            log?.Invoke("ses-tutmadi", 0, $"{prompt.Character}: {prompt.Path} ({count}. kez)");
+            if (count < 2) return;
+            var file = prompt.Path.Split('/')[^1];
+            var character = characters.FirstOrDefault(c => Moods.Any(m => PromptFile(c, m.Name, c.Version) == file));
+            if (character is null || character.Clips.Count <= 2) return;
+            var mood = Moods.First(m => PromptFile(character, m.Name, character.Version) == file).Name;
+            var suspects = character.PromptClips.GetValueOrDefault(mood) ?? [];
+            var dropped = character.Clips.Where(c => suspects.Contains(c.File)).OrderBy(c => c.Seconds).FirstOrDefault();
+            if (dropped is null) return;
+            character.Clips.Remove(dropped);
+            TryDelete(Path.Combine(ClipsDirectory, dropped.File));
+            character.Usual = Baseline.Of(character.Clips);
+            BuildPromptLocked(character);
+            Save();
+            log?.Invoke("ses-kesit-cikarildi", 0, $"karakter {character.Label}: {dropped.File} ({dropped.Seconds:0.0} sn) sesi kaydırıyordu");
+        }
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Satırın coşkusu yazıdan: çeviren yapay zekâ sahneye bakıp söyleyiş gücünü ve duyguyu seçtiyse onlar
+    /// (bağırış +1, fısıltı −1; kızgın, şaşkın +; üzgün, sakin −), seçmediyse İngilizcedeki ipuçları.
+    /// </summary>
+    public static double LineArousal(SpokenLine line)
+    {
+        if (line.Intensity is null && line.Emotion is null) return TextArousal(line.English);
+        var score = line.Intensity switch { SpeechIntensity.Loud => 1.0, SpeechIntensity.Quiet => -1.0, _ => 0.0 };
+        score += line.Emotion switch
+        {
+            SpeechEmotion.Angry => 0.5,
+            SpeechEmotion.Surprised => 0.4,
+            SpeechEmotion.Happy => 0.2,
+            SpeechEmotion.Sad => -0.4,
+            SpeechEmotion.Calm => -0.5,
+            _ => 0.0,
+        };
+        return Math.Clamp(score, -1.5, 1.5);
+    }
+
+    /// <summary>
+    /// Satırın yazısındaki duygu ipuçları: ünlem, büyük harfle bağırma, küfür ve emir (+); üç nokta, fısıltı (−).
+    /// Oyun sesi ölçülemezse (müzik, sesi kısılmış konuşma) yalnız bunlara bakılır.
+    /// </summary>
+    public static double TextArousal(string english)
+    {
+        if (string.IsNullOrWhiteSpace(english)) return 0;
+        var score = 0.0;
+        var exclamations = english.Count(c => c == '!');
+        if (exclamations > 0) score += exclamations > 1 ? 1.0 : 0.7;
+        var letters = english.Where(char.IsLetter).ToList();
+        if (letters.Count >= 6 && letters.Count(char.IsUpper) > letters.Count * 0.7) score += 0.6;
+        var lower = english.ToLowerInvariant();
+        if (Shouted.IsMatch(lower)) score += 0.4;
+        if (lower.Contains("...") || lower.Contains('…')) score -= 0.4;
+        if (Whispered.IsMatch(lower)) score -= 1.2;
+        return Math.Clamp(score, -1.5, 1.5);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex Shouted = new(
+        @"\b(fuck\w*|shit|goddamn|motherfuck\w*|get down|get out|watch out|look out|move|run|go go|hurry|help|stop|shut up|freeze|drop it|now)\b",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex Whispered = new(
+        @"\((whisper\w*|quietly|softly|sighs?)\)|\[(whisper\w*|quietly|softly|sighs?)\]",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Kesit sayısı sınırı aşınca, söyleyişi (coşkusu) en çok benzeyen iki kesitten temizliği düşük olan atılır:
+    /// böylece en temiz kesitler kadar sakin ve bağırarak söylenmiş olanlar da kalır. Yeni kesit kaldıysa true.
+    /// </summary>
+    private bool KeepVariedLocked(Character character)
+    {
+        var newest = character.Clips[^1];
+        character.Usual = Baseline.Of(character.Clips);
+        while (character.Clips.Count > MaxClips)
+        {
+            var ordered = character.Clips.OrderBy(character.Usual.Arousal).ToList();
+            var closest = 1;
+            for (var i = 2; i < ordered.Count; i++)
+                if (character.Usual.Arousal(ordered[i]) - character.Usual.Arousal(ordered[i - 1])
+                    < character.Usual.Arousal(ordered[closest]) - character.Usual.Arousal(ordered[closest - 1]))
+                    closest = i;
+            var dropped = ordered[closest].Score < ordered[closest - 1].Score ? ordered[closest] : ordered[closest - 1];
+            character.Clips.Remove(dropped);
+            TryDelete(Path.Combine(ClipsDirectory, dropped.File));
+            character.Usual = Baseline.Of(character.Clips);
+        }
+        character.Clips.Sort((a, b) => b.Score.CompareTo(a.Score));
+        return character.Clips.Contains(newest);
+    }
+
+    private static readonly (VoiceMood Mood, string Name, double Target)[] Moods =
+        [(VoiceMood.Calm, "sakin", -1), (VoiceMood.Normal, "normal", 0), (VoiceMood.Intense, "gergin", 1)];
+
+    private static string PromptFile(Character character, string mood, int version) => $"c{character.Id}-{mood}-v{version}.wav";
+
+    /// <summary>
+    /// Her duygu için ayrı örnek: kesitler, söyleyişleri o duyguya (sakin −1, olağan 0, gergin +1) yakınlıklarına göre
+    /// sıralanıp ~9 sn birleştirilir. pocket-tts sesi olduğu kadar söyleyişi de örnekten aldığı için gergin satır,
+    /// karakterin gergin konuştuğu kesitlerle okunur.
+    /// </summary>
     private void BuildPromptLocked(Character character)
     {
+        if (character.Clips.Count == 0) return;
+        var previous = character.Version;
+        character.Version++;
+        character.Format = 2;
+        Directory.CreateDirectory(PromptsDirectory);
+        foreach (var (_, name, target) in Moods)
+        {
+            var order = character.Clips
+                .OrderBy(c => Math.Abs(character.Usual.Arousal(c) - target) - (c.Score * 0.5))
+                .ToList();
+            var used = new List<string>();
+            var joined = JoinClips(order, out var seconds, used);
+            if (joined is null) continue;
+            if (target == 0) character.PromptSeconds = seconds;
+            character.PromptClips[name] = used;
+            var pitch = Prosody.Measure(new SpeechAudio(joined, GameAudioRing.Rate));
+            character.PromptPitch[name] = pitch.HasPitch ? pitch.Pitch : 0;
+            File.WriteAllBytes(Path.Combine(PromptsDirectory, PromptFile(character, name, character.Version)),
+                new SpeechAudio(joined, GameAudioRing.Rate).ToWav());
+            TryDelete(Path.Combine(PromptsDirectory, PromptFile(character, name, previous)));
+            promptCache.Remove("/voices/klon/" + PromptFile(character, name, previous));
+        }
+        // Eski biçimdeki tek örnek.
+        TryDelete(Path.Combine(PromptsDirectory, $"c{character.Id}-v{previous}.wav"));
+    }
+
+    /// <summary>Kesitler arka arkaya (araya çeyrek saniye sessizlik), en çok 12 sn; ses seviyesi eşitlenir.</summary>
+    private float[]? JoinClips(IEnumerable<Clip> clips, out double total, List<string> used)
+    {
+        total = 0;
         var parts = new List<float[]>();
         double seconds = 0;
-        foreach (var clip in character.Clips)
+        foreach (var clip in clips)
         {
             if (seconds >= TargetPromptSeconds) break;
             float[] samples;
@@ -475,18 +764,14 @@ public sealed class CharacterVoices : IDisposable
             if (room < GameAudioRing.Rate) break;
             if (samples.Length > room) samples = samples[..room];
             parts.Add(Normalize(samples));
+            used.Add(clip.File);
             seconds += samples.Length / (double)GameAudioRing.Rate + 0.25;
         }
-        if (parts.Count == 0) return;
+        if (parts.Count == 0) return null;
         var gap = new float[GameAudioRing.Rate / 4];
         var joined = parts.SelectMany((part, i) => i == 0 ? part : gap.Concat(part)).ToArray();
-        var previous = character.Version;
-        character.Version++;
-        character.PromptSeconds = joined.Length / (double)GameAudioRing.Rate;
-        Directory.CreateDirectory(PromptsDirectory);
-        File.WriteAllBytes(Path.Combine(PromptsDirectory, $"c{character.Id}-v{character.Version}.wav"), new SpeechAudio(joined, GameAudioRing.Rate).ToWav());
-        TryDelete(Path.Combine(PromptsDirectory, $"c{character.Id}-v{previous}.wav"));
-        promptCache.Remove($"/voices/klon/c{character.Id}-v{previous}.wav");
+        total = joined.Length / (double)GameAudioRing.Rate;
+        return joined;
     }
 
     /// <summary>Tepe seviyesi −1 dB'ye; baş ve sonda 10 ms yumuşak geçiş.</summary>
@@ -638,12 +923,78 @@ public sealed class CharacterVoices : IDisposable
         public List<Clip> Clips { get; set; } = [];
         public int Version { get; set; }
         public double PromptSeconds { get; set; }
+        /// <summary>Örneklerin biçimi: 2 = her duygu için ayrı örnek (sakin, normal, gergin).</summary>
+        public int Format { get; set; }
+        /// <summary>Karakterin olağan söyleyişi (kesitlerin ortalaması ve yayılımı): duygu buna göre ölçülür.</summary>
+        public Baseline Usual { get; set; } = new();
+        /// <summary>Her duygu örneğinin perdesi (Hz) ve hangi kesitlerden yapıldığı.</summary>
+        public Dictionary<string, double> PromptPitch { get; set; } = [];
+        public Dictionary<string, List<string>> PromptClips { get; set; } = [];
         /// <summary>Tek uzun kesit yetmez: başka bir karakterin yanlış ayrılmış tek repliği "hazır" sayılıyordu.</summary>
         public bool Ready => Version > 0 && PromptSeconds >= MinPromptSeconds && Clips.Count >= 2;
         public string Label => Name ?? $"#{Id}";
     }
 
-    public sealed record Clip(string File, double Score, double Seconds);
+    /// <param name="Loudness">Konuşmanın ses yüksekliği (dB); 0: ölçülmedi (eski kesit).</param>
+    /// <param name="Pitch">Perde (Hz, ortanca); 0: bulunamadı.</param>
+    /// <param name="Spread">Perdenin oynaklığı (yarım ton).</param>
+    public sealed record Clip(string File, double Score, double Seconds, double Loudness = 0, double Pitch = 0, double Spread = 0)
+    {
+        public bool Measured => Loudness != 0;
+    }
+
+    /// <summary>Bir karakterin olağan ses yüksekliği, perdesi (log Hz) ve oynaklığı: ortalama ve yayılım.</summary>
+    public sealed class Baseline
+    {
+        public double LoudMean { get; set; }
+        public double LoudDev { get; set; } = 1;
+        public double PitchMean { get; set; }
+        public double PitchDev { get; set; } = 1;
+        public double SpreadMean { get; set; }
+        public double SpreadDev { get; set; } = 1;
+
+        public static Baseline Of(IReadOnlyList<Clip> clips)
+        {
+            var measured = clips.Where(c => c.Measured).ToList();
+            var voiced = measured.Where(c => c.Pitch > 0).ToList();
+            var (loudMean, loudDev) = Stats(measured.Select(c => c.Loudness), 3);
+            var (pitchMean, pitchDev) = Stats(voiced.Select(c => Math.Log2(c.Pitch) * 12), 1.5);
+            var (spreadMean, spreadDev) = Stats(voiced.Select(c => c.Spread), 0.6);
+            return new Baseline
+            {
+                LoudMean = loudMean, LoudDev = loudDev, PitchMean = pitchMean, PitchDev = pitchDev,
+                SpreadMean = spreadMean, SpreadDev = spreadDev,
+            };
+        }
+
+        /// <summary>Ortalama ve yayılım; yayılım, az kesitle sıfıra inip her farkı abartmasın diye en az <paramref name="floor"/>.</summary>
+        private static (double, double) Stats(IEnumerable<double> values, double floor)
+        {
+            var list = values.ToList();
+            if (list.Count == 0) return (0, floor);
+            var mean = list.Average();
+            var dev = Math.Sqrt(list.Sum(v => (v - mean) * (v - mean)) / list.Count);
+            return (mean, Math.Max(dev, floor));
+        }
+
+        /// <summary>
+        /// Olağandan ne kadar coşkulu (+) ya da sakin (−): yükseklik, perde ve oynaklığın sapmalarının ortalaması.
+        /// Ses yüksekliği yalnız kesitlerde kullanılır; dublaj sırasında oyunun konuşma sesi kısılmış olabilir.
+        /// </summary>
+        public double Arousal(double loudness, double pitch, double spread, bool useLoudness)
+        {
+            var parts = new List<double>();
+            if (useLoudness && loudness != 0) parts.Add((loudness - LoudMean) / LoudDev);
+            if (pitch > 0)
+            {
+                parts.Add(((Math.Log2(pitch) * 12) - PitchMean) / PitchDev);
+                parts.Add((spread - SpreadMean) / SpreadDev);
+            }
+            return parts.Count == 0 ? 0 : Math.Clamp(parts.Average(), -2.5, 2.5);
+        }
+
+        public double Arousal(Clip clip) => Arousal(clip.Loudness, clip.Pitch, clip.Spread, useLoudness: true);
+    }
 
     /// <summary>Kesitin konuşma bölümü ve temizliği.</summary>
     public readonly record struct Quality(int Start, int End, double SpeechSeconds, double SnrDb, double Clipped, double Score, bool Usable)
@@ -698,4 +1049,21 @@ public sealed class CharacterVoices : IDisposable
 }
 
 /// <param name="Path">Altyazı sunucusundaki adresi (pocket-tts buradan alır; sürüm değişince adres de değişir).</param>
-public sealed record VoicePrompt(string Path, byte[] Wav, string Character);
+/// <param name="Pitch">Örneğin perdesi (Hz; 0: bilinmiyor). Seslendirme bundan çok saparsa ses tutmamıştır.</param>
+/// <param name="Fallback">Ses tutmazsa denenecek örnek (aynı karakterin olağan örneği); yoksa hazır ses.</param>
+public sealed record VoicePrompt(string Path, byte[] Wav, string Character, double Pitch = 0, VoicePrompt? Fallback = null)
+{
+    /// <summary>
+    /// Seslendirme bu kadar yarım tondan çok saparsa karakterin sesi tutmamıştır. Denemede kısa ya da arkasında başka
+    /// ses olan bir kesitten yapılan örnek, 118 Hz'lik erkek sesini aynı cümlede bir 140, bir 222 Hz okudu; sağlam
+    /// örneklerde sapma 3 yarım tonu geçmedi.
+    /// </summary>
+    public const double MaxDrift = 4.5;
+
+    public bool Matches(SpeechAudio spoken)
+    {
+        if (Pitch <= 0) return true;
+        var measured = Prosody.Measure(spoken);
+        return !measured.HasPitch || Prosody.Semitones(measured.Pitch, Pitch) <= MaxDrift;
+    }
+}

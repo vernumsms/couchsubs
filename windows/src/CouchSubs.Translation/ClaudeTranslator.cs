@@ -92,9 +92,16 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator, IPrefetch
         - "text": the subtitle translation of what is said, without the speaker's name.
         - "spoken": what the voice says when it should differ from "text": a shorter way to say the same thing in
           natural spoken Turkish so the voice keeps up with the game, numbers written as words, no brackets or symbols.
-          Use "" when the voice can simply read "text" - that is the usual case.
+          Use "" when the voice can simply read "text" with the right delivery - that is the usual case.
+          The voice takes its intonation from punctuation, so whatever it reads ("spoken", else "text") must be
+          punctuated the way the line is said: "!" for shouts, orders and urgency, "?" for every question, "..." for
+          hesitation or trailing off, commas where the speaker pauses or breathes ("Bekle, bir dakika, orada biri var.").
+          Capital letters do nothing for the voice: show stress with word order or a comma, never with capitals.
+          When "text" lacks the punctuation of the delivery, write "spoken" with it.
         - "emotion": how the line is delivered, judged from the words, the earlier lines and the situation: "neutral",
           "happy", "sad", "angry", "surprised" or "calm".
+        - "intensity": how strongly it is said: "quiet" (whispered, murmured, tired, gentle), "normal", or "loud"
+          (shouted, yelled over noise, panicked, furious, excited).
         - "gender": "female" or "male" only when it is certain - a clearly female or male name, "she"/"he" or
           "ma'am"/"sir" said about this speaker. Many names (Moon, Jae, Park, Cho...) can be either: then "unknown".
         - "dialogue": true when the line is something a character says; false for game interface text that is not
@@ -158,10 +165,11 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator, IPrefetch
 
     internal const string DubbingSchema = """
         {"type":"object","additionalProperties":false,"required":["lines"],"properties":{"lines":{"type":"array","items":{
-        "type":"object","additionalProperties":false,"required":["speaker","text","spoken","emotion","gender","dialogue","background","guessed"],"properties":{
+        "type":"object","additionalProperties":false,"required":["speaker","text","spoken","emotion","intensity","gender","dialogue","background","guessed"],"properties":{
         "background":{"type":"boolean"},"guessed":{"type":"boolean"},
         "speaker":{"type":"string"},"text":{"type":"string"},"spoken":{"type":"string"},
         "emotion":{"type":"string","enum":["neutral","happy","sad","angry","surprised","calm"]},
+        "intensity":{"type":"string","enum":["quiet","normal","loud"]},
         "gender":{"type":"string","enum":["female","male","unknown"]},"dialogue":{"type":"boolean"}}}}}}
         """;
 
@@ -490,7 +498,7 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator, IPrefetch
             if (missing.Count > 0)
                 _log?.Write(dubbing && voiced ? "claude+dublaj" : "claude", clock.ElapsedMilliseconds,
                     missing.Count == allLines.Length ? source : $"{request}  (+{allLines.Length - missing.Count} satır önbellekten)",
-                    (dubbing && voiced ? translated + "  [ses: " + string.Join(" / ", speech.Select(l => $"{l.Emotion?.ToString() ?? "nötr"},{l.Gender?.ToString() ?? "?"}{(l.Background ? ",arka" : "")}: {l.Turkish}")) + "]" : translated)
+                    (dubbing && voiced ? translated + "  [ses: " + string.Join(" / ", speech.Select(l => $"{l.Emotion?.ToString() ?? "nötr"}{(l.Intensity is { } power && power != SpeechIntensity.Normal ? "," + power : "")},{l.Gender?.ToString() ?? "?"}{(l.Background ? ",arka" : "")}: {l.Turkish}")) + "]" : translated)
                     + (_claude.LastUsage is { } usage ? $"  [{usage}]" : ""));
             LastError = null;
             // Konuşmacı adları sonraki isteklerde "Names" listesiyle gönderilir: adlar tutarlı yazılır ve tanınır.
@@ -686,6 +694,13 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator, IPrefetch
                     "calm" => SpeechEmotion.Calm,
                     _ => (SpeechEmotion?)null,
                 };
+                var intensity = (entry.TryGetProperty("intensity", out var strength) ? strength.GetString() : null) switch
+                {
+                    "quiet" => SpeechIntensity.Quiet,
+                    "normal" => SpeechIntensity.Normal,
+                    "loud" => SpeechIntensity.Loud,
+                    _ => (SpeechIntensity?)null,
+                };
                 var gender = (entry.TryGetProperty("gender", out var sex) ? sex.GetString() : null) switch
                 {
                     "female" => VoiceGender.Female,
@@ -696,7 +711,7 @@ public sealed partial class ClaudeTranslator : IProgressiveTranslator, IPrefetch
                 // Satırlar eşleşmediyse İngilizcesi bilinmez; tekrar önleme Türkçe metne bakar.
                 var background = entry.TryGetProperty("background", out var behind) && behind.ValueKind == System.Text.Json.JsonValueKind.True;
                 results.Add(new LineResult(subtitle, false,
-                    new SpokenLine(said.Length > 0 ? said : text, spoken, speaker, newTurn, emotion, gender, background), guessed));
+                    new SpokenLine(said.Length > 0 ? said : text, spoken, speaker, newTurn, emotion, gender, background, intensity), guessed));
             }
             return (results, aligned);
         }

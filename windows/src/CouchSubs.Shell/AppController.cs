@@ -1516,6 +1516,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             // Karakterin kendi sesi yalnız doğal seste (Windows sesi örnekten okuyamaz).
             CharacterVoice = (line, identify) =>
                 settings.Dubbing is { CharacterVoices: true, Engine: DubbingEngine.Natural } ? characterVoices?.VoiceFor(line, identify) : null,
+            CharacterVoiceFailed = prompt => characterVoices?.PromptFailed(prompt),
         };
         made.CastChanged += cast => Settings = settings with { Dubbing = settings.Dubbing with { Cast = cast } };
         made.Failed += message => DubbingError = message;

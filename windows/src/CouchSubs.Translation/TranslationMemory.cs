@@ -138,13 +138,14 @@ public sealed class TranslationMemory
     private sealed record StoredFile(List<string>? Names, List<Entry>? Lines);
 
     internal sealed record Entry(string Key, string Subtitle, bool Interface, string? English = null, string? Spoken = null,
-        string? Speaker = null, bool NewTurn = false, SpeechEmotion? Emotion = null, VoiceGender? Gender = null, bool Background = false)
+        string? Speaker = null, bool NewTurn = false, SpeechEmotion? Emotion = null, VoiceGender? Gender = null, bool Background = false,
+        SpeechIntensity? Intensity = null)
     {
         public static Entry From(string key, ClaudeTranslator.LineResult result) => result.Speech is { } line
-            ? new(key, result.Subtitle, result.Interface, line.English, line.Turkish, line.Speaker, line.NewTurn, line.Emotion, line.Gender, line.Background)
+            ? new(key, result.Subtitle, result.Interface, line.English, line.Turkish, line.Speaker, line.NewTurn, line.Emotion, line.Gender, line.Background, line.Intensity)
             : new(key, result.Subtitle, result.Interface);
 
         public ClaudeTranslator.LineResult ToResult() => new(Subtitle, Interface, Spoken is null ? null
-            : new SpokenLine(English ?? "", Spoken, Speaker, NewTurn, Emotion, Gender, Background));
+            : new SpokenLine(English ?? "", Spoken, Speaker, NewTurn, Emotion, Gender, Background, Intensity));
     }
 }

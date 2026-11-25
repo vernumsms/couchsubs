@@ -96,8 +96,8 @@ public class CharacterVoicesTests : IDisposable
         now -= 400; // son yarım saniye sessizlik değil, konuşma olsun
         var prompt = voices.VoiceFor(new SpokenLine("Let's go.", "Gidelim."), identify: true);
         Assert.NotNull(prompt);
-        Assert.Equal("#2", prompt!.Character);
-        Assert.StartsWith("/voices/klon/c2-v", prompt.Path);
+        Assert.StartsWith("#2", prompt!.Character);
+        Assert.Matches(@"^/voices/klon/c2-(sakin|normal|gergin)-v\d+\.wav$", prompt.Path);
         var wav = SpeechAudio.FromWav(prompt.Wav);
         Assert.True(wav.Duration >= CharacterVoices.MinPromptSeconds);
     }

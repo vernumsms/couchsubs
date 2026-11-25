@@ -93,6 +93,9 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
     /// </summary>
     public Func<SpokenLine, bool, VoicePrompt?>? CharacterVoice { get; set; }
 
+    /// <summary>Karakterin örneğiyle yapılan seslendirme sesi tutturamadı (bkz. <see cref="VoicePrompt.Matches"/>).</summary>
+    public Action<VoicePrompt>? CharacterVoiceFailed { get; set; }
+
     private readonly HashSet<string> publishedPrompts = new(StringComparer.Ordinal);
     private SubtitleServer? promptsOn;
 
@@ -113,18 +116,34 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
     }
 
     /// <summary>Satırın sesi: karakterin kendi sesi varsa o, yoksa hazır ses. Hata dublajı durdurmaz.</summary>
-    private (Uri Url, string? Character) VoiceUrl(SpokenLine line, Uri fallback, bool identify)
+    private (Uri Url, string? Character, VoicePrompt? Prompt) VoiceUrl(SpokenLine line, Uri fallback, bool identify)
     {
-        if (CharacterVoice is not { } find) return (fallback, null);
+        if (CharacterVoice is not { } find) return (fallback, null, null);
         try
         {
-            return find(line, identify) is { } prompt ? (PublishPrompt(prompt), prompt.Character) : (fallback, null);
+            return find(line, identify) is { } prompt ? (PublishPrompt(prompt), prompt.Character, prompt) : (fallback, null, null);
         }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
             Log?.Invoke("dublaj-karakter-sesi-hatasi", 0, error.Message);
-            return (fallback, null);
+            return (fallback, null, null);
         }
+    }
+
+    /// <summary>
+    /// Karakterin örneğiyle seslendirir; çıkan ses karakterin perdesinden çok saparsa (başka biri gibi) aynı karakterin
+    /// olağan örneğiyle, o da tutmazsa hazır sesle yeniden okunur.
+    /// </summary>
+    private async Task<SpeechAudio> SpeakAsCharacterAsync(ISpeechSynthesizer engine, string text, Uri url, VoicePrompt? prompt, Uri stock)
+    {
+        var audio = await engine.SynthesizeAsync(text, url);
+        while (prompt is not null && !prompt.Matches(audio))
+        {
+            CharacterVoiceFailed?.Invoke(prompt);
+            prompt = prompt.Fallback;
+            audio = await engine.SynthesizeAsync(text, prompt is null ? stock : PublishPrompt(prompt));
+        }
+        return audio;
     }
     /// <summary>Yeni bir karaktere ses verildi; ayarlara kaydedilir (arayüz iş parçacığında).</summary>
     public event Action<VoiceCast>? CastChanged;
@@ -322,16 +341,19 @@ public sealed class Dubber(IDubbingModel model, IAudioOutput audio, Func<Subtitl
             try
             {
                 var clock = System.Diagnostics.Stopwatch.StartNew();
+                VoicePrompt? prompt = null;
+                var stockUrl = url;
                 // Karakterin kendi sesi: adı varsa adından, yoksa son konuşmanın sesinden tanınır (yalnız ana replik).
                 if (!isPreview)
                 {
-                    var (cloneUrl, character) = VoiceUrl(mainLine, url, identify: mainLine.Speaker is null && !mainLine.Background);
+                    var (cloneUrl, character, found) = VoiceUrl(mainLine, url, identify: mainLine.Speaker is null && !mainLine.Background);
                     url = cloneUrl;
+                    prompt = found;
                     if (character is not null) logText = $"[{character}] " + logText;
                     for (var i = 0; i < extra.Count; i++)
                         extra[i] = (extra[i].Text, VoiceUrl(backgroundLines[i], extra[i].Url, identify: false).Url);
                 }
-                var main = engine.SynthesizeAsync(text, url);
+                var main = SpeakAsCharacterAsync(engine, text, url, prompt, stockUrl);
                 var others = extra.Select(async item =>
                 {
                     try { return (await engine.SynthesizeAsync(item.Text, item.Url)).Tightened(); }

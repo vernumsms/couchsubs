@@ -11,12 +11,16 @@ namespace CouchSubs.Core.Dubbing;
 /// <param name="NewTurn">Diyalog tiresiyle başlayan yeni konuşma: etiketsiz satırlarda konuşan değişti demektir.</param>
 /// <param name="Emotion">Yapay zekânın sahneye bakarak seçtiği ton; null ise İngilizce metinden tahmin edilir.</param>
 /// <param name="Gender">Yapay zekânın tahmin ettiği konuşmacı cinsiyeti; ses seçiminde kullanılır.</param>
+/// <param name="Intensity">Yapay zekânın seçtiği söyleyiş gücü (fısıltı … bağırış); karakter sesinde sakin/gergin örnek seçilir.</param>
 /// <param name="Background">
 /// Arka planda, başka bir konuşmayla aynı anda duyulan replik (telsiz, uzaktan bağırış, TV'deki spiker): sıra beklemez,
 /// ana replikle birlikte daha kısık sesle çalınır.
 /// </param>
 public sealed record SpokenLine(string English, string Turkish, string? Speaker = null, bool NewTurn = false,
-    SpeechEmotion? Emotion = null, VoiceGender? Gender = null, bool Background = false);
+    SpeechEmotion? Emotion = null, VoiceGender? Gender = null, bool Background = false, SpeechIntensity? Intensity = null);
+
+/// <summary>Repliğin ne kadar güçlü söylendiği: fısıltı, alçak sesle (Quiet); olağan; bağırarak, telaşla (Loud).</summary>
+public enum SpeechIntensity { Quiet, Normal, Loud }
 
 /// <summary>Pocket TTS Turkish'in duygu etiketleri; etiketsiz cümle düz okunur.</summary>
 public enum SpeechEmotion { Happy, Sad, Angry, Surprised, Calm }
