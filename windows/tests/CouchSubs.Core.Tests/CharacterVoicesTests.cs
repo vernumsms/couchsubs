@@ -134,6 +134,67 @@ public class CharacterVoicesTests : IDisposable
         Assert.Equal(0, voices.KnownCount);
     }
 
+    /// <summary>
+    /// Ara sahne: iki karakter arka arkaya, arada sessizlik olmadan konuşuyor; duyulan konuşma parçası gelmiyor.
+    /// Satırlar ekranda belirince oyun sesi zamanlı parçalarla yazıya çevrilip her satırın sesi ayrı kesilir.
+    /// </summary>
+    [Fact]
+    public void CutsContinuousDialogueBySubtitleTimes()
+    {
+        using var voices = Make();
+        string[] texts =
+        [
+            "We have to get out of here right now.", "The car is parked behind the warehouse.",
+            "Grab the bag and follow me quickly.", "Nobody followed us here, I promise you.",
+        ];
+        double[] pitches = [120, 220, 125, 215];
+        var lineStarts = new List<long>();
+        var shownAt = new List<long>();
+        var next = 0;
+        voices.Transcribe = (samples, _) =>
+        {
+            // Pencere, sıradaki bekleyen satırın gösterilmesinden 3,5 sn sonra biter (CharacterVoices'taki kural);
+            // her satırın gerçek zamanından parça zamanı hesaplanır.
+            var windowEnd = shownAt[next] + 3500;
+            while (next < shownAt.Count && shownAt[next] <= windowEnd - 500) next++;
+            var windowStart = windowEnd - (long)(samples.Length * 1000.0 / 16000);
+            var pieces = new List<HeardPiece>();
+            for (var i = 0; i < texts.Length; i++)
+            {
+                var start = (lineStarts[i] - windowStart) / 1000.0;
+                if (start >= 0 && start + 3 <= samples.Length / 16000.0) pieces.Add(new HeardPiece(texts[i], start, start + 3));
+            }
+            return Task.FromResult<IReadOnlyList<HeardPiece>>(pieces);
+        };
+        for (var i = 0; i < texts.Length; i++)
+        {
+            lineStarts.Add(now);
+            for (var offset = 0; offset < 3 * 48000; offset += 960)
+            {
+                now += 20;
+                var chunk = new float[960];
+                for (var j = 0; j < chunk.Length; j++)
+                {
+                    var t = (offset + j) / 48000.0;
+                    var syllable = Math.Sin(2 * Math.PI * 3 * t) > -0.6 ? 1.0 : 0.15;
+                    chunk[j] = (float)(0.4 * syllable * Math.Sin(2 * Math.PI * pitches[i] * t));
+                }
+                voices.Audio.Feed(chunk, 48000);
+            }
+            lock (shownAt) shownAt.Add(now);
+            voices.Shown([new SpokenLine(texts[i], "tr")]);
+        }
+        // Konuşmanın sonu tampona girsin diye bir süre daha sessizlik.
+        for (var k = 0; k < 250; k++)
+        {
+            now += 20;
+            voices.Audio.Feed(Enumerable.Repeat(0.0005f, 960).ToArray(), 48000);
+            Thread.Sleep(4);
+        }
+        WaitFor(() => voices.ReadyCount == 2, () => string.Join("\n", Log));
+        Assert.Equal(2, voices.KnownCount);
+    }
+
     [Fact]
     public void OverlapPenalizesExtraWords()
     {

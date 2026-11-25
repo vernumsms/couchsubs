@@ -1353,11 +1353,36 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                 services.WriteDiagnostic("ses-dinleme-hatasi: " + error.Message, 0, "");
             }
         });
-        // Model, son tanıma bitince bırakılır (tanıma sürerken bırakılırsa yerel kitaplık çöker).
-        listenWorker = worker.ContinueWith(_ => recognizer.Dispose(), TaskScheduler.Default);
+        listenRecognizer = recognizer;
+        var user = new System.Runtime.CompilerServices.StrongBox<CharacterVoices?>();
+        recognizerUser = user;
+        ConnectCharacterVoices();
+        // Model, son tanıma bitince bırakılır (tanıma sürerken bırakılırsa yerel kitaplık çöker). Karakter sesleri de
+        // aynı modelle dinliyor: onların işi de bitmeden bırakılmaz.
+        listenWorker = worker.ContinueWith(async _ =>
+        {
+            if (Volatile.Read(ref user.Value) is { } voices) await voices.Stopped.ConfigureAwait(false);
+            recognizer.Dispose();
+        }, TaskScheduler.Default).Unwrap();
     }
 
     private Task? listenWorker;
+    private ISpeechRecognizer? listenRecognizer;
+    /// <summary>Oyun sesini dinleyen modeli kullanan karakter sesleri (model, onlar durunca bırakılır).</summary>
+    private System.Runtime.CompilerServices.StrongBox<CharacterVoices?>? recognizerUser;
+
+    /// <summary>Karakter sesleri, altyazı satırlarının sesini oyun sesini dinleyen modelle yazıya çevirip keser.</summary>
+    private void ConnectCharacterVoices()
+    {
+        if (characterVoices is not { } voices || listenRecognizer is not { } recognizer || listenWork is not { } work
+            || recognizerUser is not { } user) return;
+        // Model bir oturumda tek karakter sesleri nesnesine bağlanır (bırakılırken onun bitmesini bekler).
+        if (user.Value is not null && !ReferenceEquals(user.Value, voices)) return;
+        Volatile.Write(ref user.Value, voices);
+        voices.Transcribe = (samples, token) => work.IsCancellationRequested
+            ? Task.FromResult<IReadOnlyList<HeardPiece>>([])
+            : recognizer.TranscribePiecesAsync(samples, token);
+    }
 
     // --- Karakter sesleri ---
 
@@ -1413,6 +1438,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             var made = new CharacterVoices(folder, model.CreateEmbedder(), services.WriteDiagnostic);
             made.Changed += () => post(CharacterVoicesChanged);
             characterVoices = made;
+            ConnectCharacterVoices();
             services.WriteDiagnostic("ses-toplama-basladi", 0, $"{made.KnownCount} karakter, {made.ReadyCount} hazır | {folder}");
         }
         catch (Exception error)
@@ -1435,6 +1461,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         listenWork?.Cancel();
         listenWork = null;
         listenWorker = null;
+        listenRecognizer = null;
+        recognizerUser = null;
     }
 
     /// <summary>Ses modelini indirir (ilk kullanımda bir kez, ~440 MB).</summary>

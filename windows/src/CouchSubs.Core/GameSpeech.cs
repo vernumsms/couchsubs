@@ -7,10 +7,23 @@ public interface ISpeechRecognizer : IDisposable
 {
     /// <summary>16 kHz tek kanal örneklerdeki İngilizce konuşma; konuşma yoksa ya da anlaşılmadıysa metni null.</summary>
     Task<HeardSpeech> TranscribeAsync(float[] samples, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Konuşma, zamanlarıyla parça parça (Whisper'ın cümle parçaları; saniye, örneklerin başından). Karakter seslerini
+    /// toplarken her altyazı satırının sesi bu zamanlarla kesilir. Varsayılan: bütün ses tek parça.
+    /// </summary>
+    async Task<IReadOnlyList<HeardPiece>> TranscribePiecesAsync(float[] samples, CancellationToken cancellationToken)
+    {
+        var heard = await TranscribeAsync(samples, cancellationToken).ConfigureAwait(false);
+        return heard.Text is { } text ? [new HeardPiece(text, 0, samples.Length / (double)SpeechSegmenter.Rate)] : [];
+    }
 }
 
 /// <summary>Duyulan konuşma: metin (yoksa null) ve modelin ne kadar emin olduğu (0–1).</summary>
 public sealed record HeardSpeech(string? Text, float Confidence);
+
+/// <summary>Duyulan konuşmanın bir parçası: metni, başı ve sonu (saniye).</summary>
+public sealed record HeardPiece(string Text, double Start, double End);
 
 /// <summary>İndirilmesi gereken konuşma tanıma modeli.</summary>
 public interface IGameSpeechModel

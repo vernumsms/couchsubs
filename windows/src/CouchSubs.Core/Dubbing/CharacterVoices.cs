@@ -123,9 +123,27 @@ public sealed class CharacterVoices : IDisposable
         Audio = audio ?? new GameAudioRing();
         Load();
         worker = Task.Run(WorkAsync);
+        listener = Task.Run(ListenAsync);
     }
 
     private readonly Task worker;
+    private readonly Task listener;
+
+    /// <summary>
+    /// Oyun sesini zamanlı parçalarla yazıya çeviren model (16 kHz; Whisper). Verilirse her altyazı satırının sesi,
+    /// satırın ekranda belirdiği anın çevresinden dinlenip kesilir. Ara sahnelerde konuşma kesintisiz sürdüğü için
+    /// ses seviyesine bakarak konuşmayı bölen dinleyici replikleri ayıramıyor, yalnız kırıntılar yakalıyordu.
+    /// </summary>
+    public Func<float[], CancellationToken, Task<IReadOnlyList<HeardPiece>>>? Transcribe { get; set; }
+
+    /// <summary>Arka plan işleri (kesit işleme ve dinleme) bitince tamamlanır; ses tanıma modeli ancak o zaman bırakılır.</summary>
+    public Task Stopped => Task.WhenAll(worker, listener);
+
+    /// <summary>Altyazı satırı belirdikten sonra bu kadar beklenir (konuşmanın sonu da tampona girsin).</summary>
+    private const long ListenAfterMs = 3500;
+    /// <summary>Satırın konuşması, satır çevrilip gösterildiğinde (okuma + çeviri) başlayalı en çok bu kadar olur.</summary>
+    private const long ListenBeforeMs = 6000;
+    private readonly List<(string Key, string? Speaker, long At)> waiting = [];
 
     /// <summary>Kendi sesi hazır (yeterince temiz kesit toplanmış) karakter sayısı.</summary>
     public int ReadyCount { get { lock (gate) return characters.Count(c => c.Ready); } }
@@ -158,7 +176,9 @@ public sealed class CharacterVoices : IDisposable
                 var key = TextMatch.Normalize(line.English);
                 if (key.Split(' ').Length < 3) continue;
                 shown.Add((key, line.Speaker, Audio.Now));
+                if (Transcribe is not null) waiting.Add((key, line.Speaker, Audio.Now));
             }
+            if (waiting.Count > 24) waiting.RemoveRange(0, waiting.Count - 24);
             MatchLocked();
         }
     }
@@ -176,9 +196,86 @@ public sealed class CharacterVoices : IDisposable
             var line = shown[match];
             heard.RemoveAt(i);
             shown.RemoveAt(match);
-            work.Writer.TryWrite((h.StartedAt, h.Seconds, line.Speaker, line.Key));
+            waiting.RemoveAll(w => w.Key == line.Key);
+            if (TakeLocked(line.Key)) work.Writer.TryWrite((h.StartedAt, h.Seconds, line.Speaker, line.Key));
         }
     }
+
+    /// <summary>Son bir dakikada sesi alınmış satırlar (aynı replik iki yoldan ya da iki kez alınmasın).</summary>
+    private readonly Dictionary<string, long> taken = new(StringComparer.Ordinal);
+
+    private bool TakeLocked(string key)
+    {
+        var now = Audio.Now;
+        foreach (var old in taken.Where(entry => now - entry.Value > 60_000).Select(entry => entry.Key).ToList()) taken.Remove(old);
+        return taken.TryAdd(key, now);
+    }
+
+    /// <summary>
+    /// Bekleyen altyazı satırlarının sesini dinler: en eski satırın çevresindeki ~9,5 sn yazıya çevrilir, Whisper'ın
+    /// parçalarından satırla eşleşenin zamanları kesit olur. Pencereye düşen bütün satırlar tek seferde denenir.
+    /// </summary>
+    private async Task ListenAsync()
+    {
+        try
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                await Task.Delay(400, stop.Token).ConfigureAwait(false);
+                if (Transcribe is not { } transcribe) continue;
+                long from, to;
+                List<(string Key, string? Speaker, long At)> lines;
+                lock (gate)
+                {
+                    if (waiting.Count == 0 || Audio.Now < waiting[0].At + ListenAfterMs) continue;
+                    from = waiting[0].At - ListenBeforeMs;
+                    to = waiting[0].At + ListenAfterMs;
+                    lines = waiting.Where(w => w.At <= to - 500).ToList();
+                    waiting.RemoveAll(w => w.At <= to - 500);
+                }
+                try { await ListenWindowAsync(transcribe, from, to, lines).ConfigureAwait(false); }
+                catch (Exception error) when (error is not OperationCanceledException) { log?.Invoke("ses-toplama-hatasi", 0, error.Message); }
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task ListenWindowAsync(Func<float[], CancellationToken, Task<IReadOnlyList<HeardPiece>>> transcribe,
+        long from, long to, List<(string Key, string? Speaker, long At)> lines)
+    {
+        if (Audio.Slice(from, to) is not { } raw) return;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        // Tampon pencerenin başını tutmuyorsa kesit sondan hizalanır.
+        var start = to - (long)(raw.Length * 1000.0 / GameAudioRing.Rate);
+        var pieces = await transcribe(To16k(raw), stop.Token).ConfigureAwait(false);
+        var keys = pieces.Select(p => TextMatch.Normalize(p.Text)).ToArray();
+        var matched = 0;
+        foreach (var line in lines)
+        {
+            var best = (Score: 0.0, First: -1, Last: -1);
+            for (var first = 0; first < pieces.Count; first++)
+                for (var last = first; last < Math.Min(pieces.Count, first + 3); last++)
+                {
+                    var score = Overlap(string.Join(' ', keys[first..(last + 1)]), line.Key);
+                    if (score > best.Score) best = (score, first, last);
+                }
+            if (best.Score < 0.6) continue;
+            lock (gate)
+            {
+                // Bu arada sesi başka yoldan (duyulan konuşmayla) alındıysa ikinci kez alınmaz.
+                if (!TakeLocked(line.Key)) continue;
+                shown.RemoveAll(s => s.Key == line.Key);
+            }
+            var startedAt = start + (long)(pieces[best.First].Start * 1000) - 150;
+            var seconds = pieces[best.Last].End - pieces[best.First].Start + 0.3;
+            work.Writer.TryWrite((startedAt, seconds, line.Speaker, line.Key));
+            matched++;
+        }
+        log?.Invoke("ses-dinleme", clock.ElapsedMilliseconds,
+            $"{matched}/{lines.Count} replik eşleşti | {Shorten(string.Join(" / ", pieces.Select(p => p.Text)))}");
+    }
+
+    private static string Shorten(string text) => text.Length <= 240 ? text : text[..240] + "…";
 
     /// <summary>Ortak sözcük oranı (uzun olana göre): duyulan parça başka bir repliği de içeriyorsa düşük çıkar.</summary>
     public static double Overlap(string a, string b)
@@ -448,6 +545,8 @@ public sealed class CharacterVoices : IDisposable
             promptCache.Clear();
             heard.Clear();
             shown.Clear();
+            waiting.Clear();
+            taken.Clear();
             try { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); } catch (IOException) { }
         }
         Changed?.Invoke();
@@ -492,7 +591,7 @@ public sealed class CharacterVoices : IDisposable
         stop.Cancel();
         work.Writer.TryComplete();
         // Model, süren kesit işlenince bırakılır.
-        worker.ContinueWith(_ => embedder.Dispose(), TaskScheduler.Default);
+        Stopped.ContinueWith(_ => embedder.Dispose(), TaskScheduler.Default);
     }
 
     private string ClipsDirectory => Path.Combine(directory, "kesitler");

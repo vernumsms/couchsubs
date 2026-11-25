@@ -87,6 +87,25 @@ public sealed class WhisperRecognizer : ISpeechRecognizer
         }
     }
 
+    public async Task<IReadOnlyList<HeardPiece>> TranscribePiecesAsync(float[] samples, CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var pieces = new List<HeardPiece>();
+            await foreach (var segment in processor.ProcessAsync(samples, cancellationToken).ConfigureAwait(false))
+            {
+                if (segment.Probability < MinConfidence || SpeechSegmenter.Clean(segment.Text) is not { } text) continue;
+                pieces.Add(new HeardPiece(text, segment.Start.TotalSeconds, segment.End.TotalSeconds));
+            }
+            return pieces;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     public void Dispose()
     {
         processor.Dispose();
