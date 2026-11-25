@@ -638,7 +638,8 @@ public sealed class CharacterVoices : IDisposable
         public List<Clip> Clips { get; set; } = [];
         public int Version { get; set; }
         public double PromptSeconds { get; set; }
-        public bool Ready => Version > 0 && PromptSeconds >= MinPromptSeconds;
+        /// <summary>Tek uzun kesit yetmez: başka bir karakterin yanlış ayrılmış tek repliği "hazır" sayılıyordu.</summary>
+        public bool Ready => Version > 0 && PromptSeconds >= MinPromptSeconds && Clips.Count >= 2;
         public string Label => Name ?? $"#{Id}";
     }
 
